@@ -129,12 +129,14 @@ reddederse hızlı giriş mağaza sürümünden çıkarılıp yeniden gönderili
 
 ### Veri kullanımı
 
-Eklenti geliştiriciye hiçbir veri iletmez ve satmaz. Formda şu türleri işaretleyin:
+Eklenti geliştiriciye hiçbir veri iletmez ve satmaz. Formda şu üç türü işaretleyin, diğerlerini boş bırakın:
 
 - **Kişisel olarak tanımlayıcı bilgiler** — hızlı giriş kurulursa T.C. kimlik no ve
   GSM numarası tarayıcıda saklanır ve yalnızca kullanıcı UYAP'ta Giriş Yap'a
   bastığında e-Devlet'in kendi mobil imza formuna yazılıp e-Devlet'e gönderilir;
   duruşma listesindeki taraf adları yalnızca tarayıcıda tutulur.
+- **Kimlik doğrulama bilgileri** — aynı T.C. kimlik no ve GSM numarası, e-Devlet'e mobil
+  imzayla girişte kullanıldığı için bu türe de girer.
 - **Web sitesi içeriği** — evrak listesi, evraklar ve duruşmalar UYAP'tan okunur,
   kullanıcının diskine ve tarayıcısına yazılır, başka hiçbir yere gönderilmez.
 
