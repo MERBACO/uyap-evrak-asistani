@@ -13,7 +13,8 @@ aşağıya bakın); takvim eşitlemesi 2.16.0 ile kaldırıldı.
 | Ne | Nerede |
 |---|---|
 | Yüklenecek paket | GitHub'daki son sürümün (Releases) ekindeki `uyap-evrak-asistani-<sürüm>.zip`; yalnızca `manifest.json`, `src/`, `presets/`, `fonts/`, `vendor/`, `icons/` içerir |
-| Mağaza simgesi (128×128) | `icons/icon128.png` (paketin içinde, ayrıca yüklenmez) |
+| Mağaza simgesi (128×128) | `icons/icon128.png` — *Mağaza girişi* sayfasındaki simge alanına ayrıca yüklenir |
+| Ayrıntılı açıklama, düz metin | `docs/magaza/aciklama.txt` — açıklama kutusuna buradan kopyalayın; bu sayfadan kopyalanınca satır sonları kaybolur |
 | Ekran görüntüleri (1280×800) ve küçük tanıtım görseli (440×280) | `docs/magaza/` — uydurma verilerle üretildi, müvekkil bilgisi yok |
 | Gizlilik politikası adresi | https://github.com/MERBACO/uyap-evrak-asistani/blob/main/PRIVACY.md |
 

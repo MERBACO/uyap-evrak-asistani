@@ -1,0 +1,24 @@
+UYAP Avukat Portal evrakları tek tek verir. İki yüz evraklık bir dosyayı arşivlemek iki yüz tıklama demek ve sonuç, İndirilenler klasöründe sırasız bir yığın olarak kalır.
+
+UYAP Dosyalama ve Evrak Asistanı, açtığınız dosyanın evraklarını tarih sırasına göre, tek bir klasöre indirir. Dosya adları sıra numarasıyla başladığı için klasörün kendi sıralaması kronolojiyi korur — beş yıl sonra arşivi okumak için bu eklentiye ihtiyaç kalmaz.
+
+• Bağlı soruşturma ve talimat dosyaları ile eklerin tamamı listelenir
+• İşinize yaramayan evrak türleri elenebilir, tercih kalıcı yapılabilir
+• Arama kutusu ve tarih aralığıyla uzun dosyalar daraltılır
+• Evrakların içinde arama: UDF, PDF, Word, Excel ve KEP evraklarının metninde aranır, kelimenin geçtiği yer gösterilir; okunan metin hiçbir yere kaydedilmez
+• İçeriği birebir aynı olan evraklar bir kez indirilir
+• Seçili evraklar, biçim farkı gözetmeksizin tek belgede yazdırılabilir veya PDF olarak kaydedilebilir; UDF evraklar metni aranabilir kalacak şekilde çevrilir
+• Fiziki dosya için kapak sayfası; yazdırılan belgede içindekiler sayfası, her evrak için yer imi ve sayfa numaraları
+• Dosyaya son bakışınızdan sonra gelen evraklar işaretlenir; her dosyanın ne zaman listelendiği, indirildiği ve yazdırıldığı panelde görünür
+• Klasöre, evrakları durumlarıyla listeleyen ve tıklanınca evrağı açan bir Excel dizini konur
+• Yarıda kalan indirme ya da yazdırma "Kaldığı Yerden Devam Et" ile sürdürülür; inmiş evraklar yeniden istenmez
+• 30 günlük duruşma ve keşif listesi: UYAP'a girince kendiliğinden gelir, gün gün tablo olarak açılır, yazdırılır ve Excel'e aktarılır
+• İsteğe bağlı mobil imza ile hızlı giriş: UYAP'ın giriş sayfasındaki tek düğme e-Devlet'in mobil imza formunu doldurup imzaya gönderir, siz telefondan onaylarsınız. Parola saklanmaz; bilgiler tarayıcınızda saklanır ve yalnızca e-Devlet'in formuna yazılır
+
+Evraklar UYAP'ı yormamak için tek tek, birkaç saniye arayla (dakikada yaklaşık 16 evrak) istenir; seçimin tahmini süresi düğmelerin üstünde yazar, uzun işlerde bir satır işin sürdüğünü gösterir. UYAP erişimi geçici olarak durdurursa eklenti bunu tanır ve UYAP'ın yanıtını gösterir.
+
+Yalnızca vekâletiniz bulunan, portalın size zaten gösterdiği dosyalarda çalışır. Hiçbir yetkilendirmeyi aşmaz. Sunucusu yoktur; evraklar doğrudan sizin diskinize iner, geliştiriciye hiçbir veri ulaşmaz.
+
+Kaynak kodu herkese açık olarak incelenebilir: https://github.com/MERBACO/uyap-evrak-asistani
+
+Not: UDF evrakların PDF çıktısı okunabilir bir surettir; elektronik imza PDF'e aktarılamaz. Aslın gerektiği yerlerde UDF dosyasının kendisi kullanılmalıdır. Adalet Bakanlığı veya UYAP ile bağlantılı değildir.
