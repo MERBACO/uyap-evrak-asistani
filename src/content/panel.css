@@ -1,0 +1,686 @@
+/* panel.css — scoped hard to #ua-panel so nothing leaks into the portal's own styles. */
+
+#ua-panel {
+  --ua-ink: #16202e;
+  --ua-ink-2: #5c6b7a;
+  --ua-line: #dce3ea;
+  --ua-paper: #ffffff;
+  --ua-tint: #f4f7fa;
+  --ua-seal: #93221f;
+  --ua-ok: #1f6b4a;
+
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2147483000;
+  /* Sized by its content, capped so a long list cannot fill the screen. A fixed
+     height left a large empty box under the three-line hint before anything had
+     been listed; growing into the space only when there is something to show
+     keeps the panel out of the way. */
+  /* Content decides the height; the cap here only stops it exceeding the window.
+     The modest cap that keeps a fresh listing small is applied inline, and
+     lifted the moment the user resizes by hand — as a CSS rule it also blocked
+     the resize grip, so the panel could not be dragged taller. */
+  width: 380px;
+  height: auto;
+  max-height: 95vh;
+  min-width: 300px;
+  min-height: 160px;
+  max-width: 96vw;
+  /* Long document names do not fit a fixed panel; the grip in the bottom-right
+     corner lets the panel be sized to the case file at hand. Requires a
+     non-visible overflow, which the layout already uses. */
+  resize: both;
+  display: flex;
+  flex-direction: column;
+  background: var(--ua-paper);
+  color: var(--ua-ink);
+  border: 1px solid var(--ua-line);
+  border-radius: 4px;
+  box-shadow: 0 12px 32px rgba(22, 32, 46, 0.16);
+  font: 400 13px/1.5 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+#ua-panel * { box-sizing: border-box; }
+#ua-panel.is-collapsed { display: none; }
+
+/* The resize grip, drawn in the seal colour so it is clearly a handle. The
+   browser's own faint grip sits under it; this just makes the corner read as
+   "drag me to make the panel bigger". pointer-events:none so the native resize
+   still works through it. */
+#ua-panel::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 16px;
+  height: 16px;
+  z-index: 1;
+  pointer-events: none;
+  border-bottom-right-radius: 4px;
+  background: linear-gradient(
+    135deg,
+    transparent 0 50%,
+    var(--ua-seal) 50% 61%,
+    transparent 61% 73%,
+    var(--ua-seal) 73% 84%,
+    transparent 84% 100%
+  );
+}
+#ua-panel.is-collapsed::after { display: none; }
+
+/* The way back in once the panel is closed. */
+#ua-handle {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2147483000;
+  padding: 8px 14px;
+  border: 1px solid #93221f;
+  border-radius: 4px;
+  background: #93221f;
+  color: #fff;
+  font: 600 12px/1 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(22, 32, 46, 0.22);
+}
+#ua-handle:hover { background: #7d1d1a; }
+#ua-handle[hidden] { display: none; }
+
+/* ------------------------------------------------------------------ header */
+
+#ua-panel .ua-head {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 12px 40px 12px 14px;
+  border-bottom: 1px solid var(--ua-line);
+  cursor: grab;
+  user-select: none;
+  background: var(--ua-tint);
+}
+#ua-panel .ua-head:active { cursor: grabbing; }
+
+#ua-panel .ua-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--ua-seal);
+}
+#ua-panel .ua-title { font-size: 14px; font-weight: 600; margin-top: 1px; }
+
+#ua-panel .ua-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ua-ink-2);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+#ua-panel .ua-close:hover { background: rgba(22, 32, 46, 0.07); color: var(--ua-ink); }
+
+/* -------------------------------------------------------------------- body */
+
+#ua-panel .ua-body {
+  display: flex;
+  flex-direction: column;
+  /* Grows with the panel so the document list gets the space a resize creates;
+     min-height:0 lets the list scroll instead of pushing the footer off. */
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 12px 14px 0;
+}
+
+#ua-panel .ua-lead { margin: 0 0 10px; color: var(--ua-ink-2); }
+#ua-panel .ua-steps { margin: 0 0 10px; padding-left: 18px; color: var(--ua-ink-2); }
+#ua-panel .ua-steps li { margin-bottom: 4px; }
+#ua-panel .ua-steps b { color: var(--ua-ink); }
+
+#ua-panel .ua-problems {
+  margin: 0 0 14px;
+  padding: 8px 10px 8px 24px;
+  list-style: square;
+  background: var(--ua-tint);
+  border-left: 2px solid var(--ua-seal);
+  font-size: 12px;
+  color: var(--ua-ink-2);
+}
+
+#ua-panel .ua-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+#ua-panel .ua-check { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ua-ink-2); }
+
+/* Settings: destination and notification. */
+#ua-panel .ua-ayar { margin-top: 5px; }
+#ua-panel .ua-ayar-govde {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--ua-tint);
+  border: 1px solid var(--ua-line);
+  border-radius: 3px;
+}
+#ua-panel .ua-ayar-satir {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ua-ink-2);
+}
+#ua-panel .ua-ayar-satir input[type='text'] {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--ua-line);
+  border-radius: 3px;
+  background: var(--ua-paper);
+  color: var(--ua-ink);
+  font: 400 11.5px ui-monospace, Menlo, monospace;
+}
+#ua-panel .ua-ayar-not {
+  margin: 6px 0 8px;
+  font: 400 11px ui-monospace, Menlo, monospace;
+  color: var(--ua-ink-2);
+  word-break: break-all;
+}
+
+/* Document types, with counts. The list is the filter. */
+#ua-panel .ua-tur { margin: 5px 0 2px; }
+#ua-panel .ua-tur-bas { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#ua-panel .ua-tur-liste {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  max-height: 190px;
+  overflow-y: auto;
+  background: var(--ua-tint);
+  border: 1px solid var(--ua-line);
+  border-radius: 3px;
+}
+#ua-panel .ua-tur-satir {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+#ua-panel .ua-tur-etiket {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  font-size: 12px;
+}
+#ua-panel .ua-tur-etiket input { accent-color: var(--ua-seal); flex: none; }
+#ua-panel .ua-tur-ad { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ua-panel .ua-tur-say {
+  flex: none;
+  font: 500 11px ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--ua-ink-2);
+}
+#ua-panel .ua-tur-satir.is-haric .ua-tur-ad { color: var(--ua-ink-2); text-decoration: line-through; }
+#ua-panel .ua-tur-kalici { flex: none; font-size: 10.5px; white-space: nowrap; }
+#ua-panel .ua-tur-kalici.is-on { color: var(--ua-seal); text-decoration: none; font-weight: 600; }
+
+#ua-panel .ua-gecmis-ozet { margin: 2px 0 0; font-size: 11.5px; color: var(--ua-ink-2); white-space: pre-line; }
+#ua-panel .ua-gecmis-satir { font-size: 11.5px; color: var(--ua-ink-2); font-variant-numeric: tabular-nums; }
+#ua-panel .ua-gecmis-satir.is-simdi { color: var(--ua-ink); }
+#ua-panel .ua-gecmis .ua-btn-link:disabled { color: var(--ua-ink); opacity: 1; cursor: default; }
+
+/* Filtered-out documents stay on screen: hiding them would repeat the mistake
+   of letting an incomplete archive look complete. */
+#ua-panel .ua-row.is-elenen { opacity: 0.42; }
+
+#ua-panel .ua-meta {
+  /* Scrollable, so flexbox would shrink it first when the panel is short — down to
+     a sliver that hid the document count. The list gives way instead. */
+  flex: none;
+  margin: 6px 0 6px;
+  font-size: 12px;
+  color: var(--ua-ink-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 140px;
+  overflow-y: auto;
+}
+#ua-panel .ua-meta.is-error { color: var(--ua-seal); }
+
+/* ------------------------------------------------------- the chronology rail */
+
+#ua-panel .ua-list {
+  position: relative;
+  margin: 0 -14px;
+  padding: 2px 14px 8px;
+  list-style: none;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+/* The spine: one continuous line the whole file hangs off. */
+#ua-panel .ua-list::before {
+  content: "";
+  position: absolute;
+  left: 27px;
+  top: 8px;
+  bottom: 12px;
+  width: 1px;
+  background: var(--ua-line);
+}
+
+#ua-panel .ua-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 26px 1fr 16px;
+  gap: 8px;
+  align-items: start;
+  padding: 6px 0;
+}
+
+#ua-panel .ua-no {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 3px;
+  background: var(--ua-paper);
+  border: 1px solid var(--ua-line);
+  font: 500 10px/1 ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--ua-ink-2);
+}
+
+#ua-panel .ua-row-main { display: flex; gap: 7px; align-items: start; cursor: pointer; min-width: 0; }
+#ua-panel .ua-row-main input { margin-top: 3px; flex: none; accent-color: var(--ua-seal); }
+#ua-panel .ua-row-text { min-width: 0; }
+
+#ua-panel .ua-row-ad {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Arrived since the file was last listed. Green, not the seal red: new is
+   news, not a fault. */
+#ua-panel .ua-yeni {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: var(--ua-ok);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 15px;
+  vertical-align: 1px;
+}
+/* Where inside the document the search hit. */
+#ua-panel .ua-row-icerik {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--ua-ink-2);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#ua-panel .ua-row-icerik mark {
+  background: #fde68a;
+  color: var(--ua-ink);
+  font-style: normal;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+#ua-panel .ua-icerik { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; }
+#ua-panel .ua-icerik-durum { font-size: 11px; color: var(--ua-ink-2); }
+#ua-panel .ua-row-sub {
+  display: block;
+  font-size: 11px;
+  color: var(--ua-ink-2);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#ua-panel .ua-row-state {
+  font: 600 12px/1.4 ui-monospace, Menlo, monospace;
+  color: var(--ua-ink-2);
+  text-align: center;
+}
+
+/* Row states: the number on the rail carries the status, nothing else moves. */
+#ua-panel .ua-row.is-archived .ua-no { border-style: dashed; }
+#ua-panel .ua-row.is-running .ua-no { border-color: var(--ua-ink-2); }
+#ua-panel .ua-row.is-done .ua-no {
+  background: var(--ua-seal);
+  border-color: var(--ua-seal);
+  color: #fff;
+}
+#ua-panel .ua-row.is-done .ua-row-state { color: var(--ua-ok); }
+#ua-panel .ua-row.is-failed .ua-no { border-color: var(--ua-seal); color: var(--ua-seal); }
+#ua-panel .ua-row.is-failed .ua-row-state { color: var(--ua-seal); }
+#ua-panel .ua-row.is-kopya .ua-no { border-style: dotted; }
+#ua-panel .ua-row.is-kopya .ua-row-state { color: var(--ua-ink-2); }
+
+/* ------------------------------------------------------------------ footer */
+
+#ua-panel .ua-foot {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--ua-line);
+  margin: 0 -14px;
+  padding: 10px 14px 12px;
+  background: var(--ua-tint);
+}
+
+#ua-panel .ua-progress {
+  height: 2px;
+  background: var(--ua-line);
+  border-radius: 1px;
+  overflow: hidden;
+}
+#ua-panel .ua-progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--ua-seal);
+  transition: width 200ms linear;
+}
+
+#ua-panel .ua-status {
+  margin: 7px 0 9px;
+  font-size: 11.5px;
+  color: var(--ua-ink-2);
+  font-variant-numeric: tabular-nums;
+  min-height: 16px;
+}
+
+/* The pulse: redrawn by a timer every second during a run. The dot is toggled
+   by script, not a CSS animation — an animation keeps running while the page
+   is frozen, which is exactly the case this has to reveal. */
+#ua-panel .ua-nabiz {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: -4px 0 9px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ua-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+#ua-panel .ua-nabiz[hidden] { display: none; }
+#ua-panel .ua-nabiz-nokta {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--ua-ok);
+  opacity: 0.35;
+}
+#ua-panel .ua-nabiz.is-tik .ua-nabiz-nokta { opacity: 1; }
+#ua-panel .ua-nabiz.is-uyari {
+  padding: 6px 8px;
+  border: 1px solid #e3b341;
+  border-radius: 3px;
+  background: #fff8e1;
+  color: #6b4e00;
+}
+#ua-panel .ua-nabiz.is-uyari .ua-nabiz-nokta { background: #c98a00; }
+
+#ua-panel .ua-select { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+#ua-panel .ua-btn-link {
+  padding: 2px 6px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--ua-ink-2);
+  font-size: 11.5px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+#ua-panel .ua-btn-link:hover:not(:disabled) { color: var(--ua-seal); border-color: transparent; }
+
+#ua-panel .ua-actions { display: flex; gap: 8px; }
+
+#ua-panel .ua-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--ua-line);
+  border-radius: 3px;
+  background: var(--ua-paper);
+  color: var(--ua-ink);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+#ua-panel .ua-btn:hover:not(:disabled) { border-color: var(--ua-ink-2); }
+#ua-panel .ua-btn:disabled { opacity: 0.45; cursor: default; }
+
+#ua-panel .ua-btn-primary {
+  background: var(--ua-ink);
+  border-color: var(--ua-ink);
+  color: #fff;
+}
+#ua-panel .ua-btn-primary:hover:not(:disabled) { background: #0e1826; border-color: #0e1826; }
+#ua-panel .ua-btn-quiet { color: var(--ua-seal); }
+
+#ua-panel :focus-visible { outline: 2px solid var(--ua-seal); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  #ua-panel .ua-progress-fill { transition: none; }
+}
+
+@media (max-width: 460px) {
+  #ua-panel { left: 12px; right: 12px; width: auto; }
+}
+
+/* The print action sits beside the download button but must not compete with it. */
+#ua-panel .ua-actions [data-act='print'] { white-space: nowrap; }
+
+/* Search and date range. Shown only once there is a list to narrow. */
+#ua-panel .ua-suzgec { margin-top: 6px; }
+#ua-panel .ua-ara {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--ua-line);
+  border-radius: 3px;
+  background: var(--ua-paper);
+  color: var(--ua-ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+#ua-panel .ua-tarih-araligi {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--ua-ink-2);
+}
+#ua-panel .ua-tarih-araligi label { display: flex; align-items: center; gap: 4px; }
+#ua-panel .ua-tarih-araligi input {
+  padding: 2px 4px;
+  border: 1px solid var(--ua-line);
+  border-radius: 3px;
+  background: var(--ua-paper);
+  color: var(--ua-ink);
+  font: inherit;
+  font-size: 11px;
+}
+
+/* The master row sits apart from the types it governs. */
+#ua-panel .ua-tur-tumu {
+  border-bottom: 1px solid var(--ua-line);
+  margin-bottom: 4px;
+  padding-bottom: 5px;
+}
+#ua-panel .ua-tur-tumu .ua-tur-ad { font-weight: 600; }
+
+/* ------------------------------------------------------------ son rötuşlar */
+
+/* Rows respond to the pointer. In a list of eight hundred, knowing which line
+   you are about to tick matters more than it does in a list of eight. */
+#ua-panel .ua-row {
+  border-radius: 3px;
+  transition: background-color 90ms linear;
+}
+#ua-panel .ua-row:hover { background: var(--ua-tint); }
+#ua-panel .ua-row.is-done:hover,
+#ua-panel .ua-row.is-failed:hover { background: transparent; }
+
+/* Slim scrollbars: the panel is narrow, and the default bar eats the width the
+   document names need. */
+#ua-panel .ua-list::-webkit-scrollbar,
+#ua-panel .ua-tur-liste::-webkit-scrollbar,
+#ua-panel .ua-meta::-webkit-scrollbar {
+  width: 9px;
+}
+#ua-panel .ua-list::-webkit-scrollbar-thumb,
+#ua-panel .ua-tur-liste::-webkit-scrollbar-thumb,
+#ua-panel .ua-meta::-webkit-scrollbar-thumb {
+  background: var(--ua-line);
+  border-radius: 5px;
+  border: 2px solid var(--ua-paper);
+}
+#ua-panel .ua-list::-webkit-scrollbar-thumb:hover { background: var(--ua-ink-2); }
+#ua-panel .ua-list::-webkit-scrollbar-track { background: transparent; }
+
+/* The primary action carries a little more weight than the rest. */
+#ua-panel .ua-btn { transition: border-color 90ms linear, background-color 90ms linear; }
+#ua-panel .ua-btn-primary { box-shadow: 0 1px 2px rgba(22, 32, 46, 0.18); }
+#ua-panel .ua-btn-primary:disabled { box-shadow: none; }
+
+/* Section toggles read as controls rather than as stray links. */
+#ua-panel .ua-tur-bas .ua-btn-link,
+#ua-panel .ua-bar > [data-act="ayar-ac"] {
+  text-decoration: none;
+  border-color: var(--ua-line);
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-size: 12px;
+  color: var(--ua-ink);
+}
+#ua-panel .ua-tur-bas .ua-btn-link:hover,
+#ua-panel .ua-bar > [data-act="ayar-ac"]:hover { background: var(--ua-tint); border-color: var(--ua-ink-2); }
+
+/* The document count is the panel's headline number once a file is listed. */
+#ua-panel .ua-meta { line-height: 1.5; }
+
+@media (prefers-reduced-motion: reduce) {
+  #ua-panel .ua-row,
+  #ua-panel .ua-btn { transition: none; }
+}
+
+#ua-panel .ua-ayar-satir select {
+  padding: 3px 5px;
+  border: 1px solid var(--ua-line);
+  border-radius: 3px;
+  background: var(--ua-paper);
+  color: var(--ua-ink);
+  font: inherit;
+  font-size: 11.5px;
+}
+
+/* An open section says so, on the button and on the panel it opened. */
+#ua-panel .ua-btn-link.is-acik {
+  background: var(--ua-tint);
+  border-color: var(--ua-ink-2);
+  color: var(--ua-ink);
+  font-weight: 600;
+}
+#ua-panel .ua-btn-link.is-acik::after { content: ' ▾'; font-size: 9px; }
+#ua-panel .ua-btn-link[aria-expanded='false']::after { content: ' ▸'; font-size: 9px; }
+
+#ua-panel .ua-ayar-govde.is-acik,
+#ua-panel .ua-tur-liste.is-acik {
+  border-left: 2px solid var(--ua-seal);
+  padding-left: 8px;
+  margin-left: 1px;
+  background: var(--ua-tint);
+  border-radius: 0 3px 3px 0;
+}
+
+#ua-panel .ua-tur-tumu .ua-btn-link { margin-left: auto; font-size: 10.5px; }
+#ua-panel .ua-tur-tumu { display: flex; align-items: center; gap: 8px; }
+
+/* Quick mobile-signature login — on UYAP's login page the panel shows this
+   section instead of its listing controls, which mean nothing before a case
+   file is open. */
+#ua-panel.is-giris .ua-body > :not(.ua-giris) { display: none !important; }
+#ua-panel .ua-giris-baslik { font-weight: 600; font-size: 13px; }
+#ua-panel .ua-giris .ua-lead { margin: 4px 0 10px; }
+#ua-panel .ua-giris-numara {
+  margin: 4px 0 10px;
+  font: 500 13px ui-monospace, Menlo, Consolas, monospace;
+  color: var(--ua-ink);
+}
+#ua-panel .ua-giris-durum { margin: 8px 0 0; font-size: 12px; color: var(--ua-ink-2); }
+#ua-panel .ua-giris-durum:empty { display: none; }
+
+/* Hearings — the next thirty days, collapsed to one line until opened. */
+#ua-panel .ua-durusma { margin: 0 0 6px; padding-bottom: 6px; border-bottom: 1px solid var(--ua-line); }
+#ua-panel .ua-durusma .ua-tur-bas { justify-content: flex-start; align-items: baseline; flex-wrap: wrap; }
+#ua-panel .ua-durusma-ozet { font-size: 11.5px; color: var(--ua-ink-2); }
+#ua-panel .ua-durusma-bilgi { margin: 4px 0 6px; font-size: 11px; color: var(--ua-ink-2); }
+#ua-panel .ua-durusma-liste {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  border-top: 1px solid var(--ua-line);
+}
+#ua-panel .ua-durusma-liste li {
+  display: grid;
+  grid-template-columns: 8.4em 1fr;
+  column-gap: 8px;
+  padding: 5px 2px;
+  border-bottom: 1px solid var(--ua-line);
+  font-size: 12px;
+}
+#ua-panel .ua-durusma-zaman { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+#ua-panel .ua-durusma-ne { overflow-wrap: anywhere; }
+#ua-panel .ua-durusma-ek { grid-column: 2; color: var(--ua-ink-2); font-size: 11.5px; }
+#ua-panel .ua-durusma-durum { margin: 4px 0 0; font-size: 11.5px; color: var(--ua-ink-2); }
+#ua-panel .ua-durusma-durum:empty { display: none; }
+#ua-panel .ua-durusma-durum.is-hata { color: var(--ua-seal); }
+
+/* Speed beside the run buttons: the choice, then what it means in plain words. */
+#ua-panel .ua-hiz { margin: 0 0 8px; font-size: 11.5px; color: var(--ua-ink-2); }
+#ua-panel .ua-hiz-etiket { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--ua-ink); }
+#ua-panel .ua-hiz select {
+  padding: 3px 6px;
+  border: 1px solid var(--ua-line);
+  border-radius: 3px;
+  background: var(--ua-paper);
+  color: var(--ua-ink);
+  font: inherit;
+  font-weight: 400;
+}
+#ua-panel .ua-hiz select:disabled { opacity: 0.5; }
+#ua-panel .ua-hiz-aciklama { display: block; margin-top: 3px; line-height: 1.45; }
+
+/* A run that stopped before the end, and the one button that continues it. */
+#ua-panel .ua-yarim {
+  margin: 0 0 9px;
+  padding: 8px 10px;
+  border: 1px solid #b7d3c4;
+  border-left: 3px solid var(--ua-ok);
+  border-radius: 3px;
+  background: #f1f8f4;
+}
+#ua-panel .ua-yarim[hidden] { display: none; }
+#ua-panel .ua-yarim-metin { margin: 0 0 7px; font-size: 12px; color: var(--ua-ink); }
+#ua-panel .ua-yarim-bekleme { margin: -3px 0 7px; font-size: 11.5px; color: #6b4e00; }
+#ua-panel .ua-yarim-bekleme[hidden] { display: none; }
+#ua-panel .ua-yarim .ua-btn-primary:disabled { opacity: 0.55; cursor: default; }

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.zip
+.DS_Store
+# Kayıt dışa aktarımları müvekkil bilgisi içerebilir — yanlışlıkla commit'lenmesin.
+kayit*.json
+recording*.json

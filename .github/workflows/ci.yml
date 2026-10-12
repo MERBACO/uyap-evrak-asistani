@@ -1,0 +1,67 @@
+name: check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Reading the code is all this needs.
+permissions:
+  contents: read
+
+# A newer push to the same branch makes the older run pointless; stop it
+# rather than spend the private repository's minutes on it.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    # Pinned rather than ubuntu-latest: the panel test needs Chrome from the
+    # image, and an image switch should be a decision, not a surprise.
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: JSON dosyaları geçerli mi
+        run: |
+          for f in manifest.json presets/*.json fonts/metrics.json; do
+            node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))" && echo "ok  $f"
+          done
+
+      # The major version matches package.json: the flat config is v9's.
+      - name: eslint
+        run: |
+          npm install --no-save eslint@9
+          npx eslint .
+
+      - name: kaynaklar çözümleniyor mu
+        run: |
+          for f in src/lib/*.js src/content/*.js src/inject/*.js src/background/*.js src/popup/*.js; do
+            cp "$f" /tmp/x.mjs && node --check /tmp/x.mjs && echo "ok  $f"
+          done
+
+      - name: ölü tanım denetimi
+        run: node tools/check-dead-declarations.mjs
+
+      - name: belgelerdeki dosya yolları var mı
+        run: node tools/check-docs.mjs
+
+      - name: manifest ile depo tutarlı mı
+        run: node tools/check-manifest.mjs
+
+      - name: ölü kod denetimi
+        run: node tools/check-unused.mjs
+
+      - name: uçtan uca testler
+        run: node tools/test-e2e.mjs
+
+      # The image ships Google Chrome; the runner finds it itself. Required
+      # here, so a missing browser fails the build instead of skipping.
+      - name: panel testi (gerçek tarayıcıda)
+        env:
+          PANEL_TESTI_ZORUNLU: '1'
+        run: node tools/test-panel.mjs

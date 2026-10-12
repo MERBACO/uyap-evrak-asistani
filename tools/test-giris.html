@@ -1,0 +1,259 @@
+<!doctype html>
+<!--
+  Scenario for tools/test-panel.mjs — run that, not this page.
+
+  The quick mobile-signature login, both halves: the section inside the panel on
+  a fake UYAP login page (src/content/hizli-giris.js) and the form filler on a
+  fake e-Devlet form (src/content/edevlet-giris.js). The kimlik no is the usual
+  checksum-valid test value, the GSM number invented: no real person's details
+  belong in this file.
+-->
+<html lang="tr"><head><meta charset="utf-8"><title>UYAP Arşiv giriş testi</title>
+<link rel="stylesheet" href="/src/content/panel.css"></head>
+<body>
+<div id="uyap"></div>
+<div id="ua-panel"><div class="ua-body"><div class="ua-bar" id="listele">Evrakları Listele</div></div></div>
+<pre id="sonuc">başladı</pre>
+<script>
+  const yaz = (m) => (document.getElementById('sonuc').textContent += '\n' + m);
+  window.addEventListener('error', (e) => yaz('HATA OLAYI ' + e.message));
+  window.addEventListener('unhandledrejection', (e) => yaz('REJECT ' + (e.reason?.stack || e.reason)));
+</script>
+<!-- Idle here: it acts only on giris.turkiye.gov.tr. Its functions stay reachable. -->
+<script src="/src/content/edevlet-giris.js"></script>
+<script type="module">
+import { hizliGirisiKur } from '/src/content/hizli-giris.js';
+
+const log = [];
+const goster = () => (document.getElementById('sonuc').textContent = log.join('\n'));
+const ok = (ad, kosul, ek = '') => { log.push(`${kosul ? 'ok  ' : 'HATA'}  ${ad}${ek ? '  → ' + ek : ''}`); goster(); };
+const uyu = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const BILGI = { tc: '10000000146', gsm: '5321234567', operator: 'turkcell' };
+
+function depoYap(baslangic = {}) {
+  const d = structuredClone(baslangic);
+  return {
+    veri: d,
+    get: async (k) => { const o = {}; for (const x of [].concat(k)) if (x in d) o[x] = structuredClone(d[x]); return o; },
+    set: async (o) => { Object.assign(d, structuredClone(o)); },
+    remove: async (k) => { for (const x of [].concat(k)) delete d[x]; }
+  };
+}
+
+/* ------------------------------------------------------- UYAP login page */
+
+const uyap = document.getElementById('uyap');
+const panel = document.getElementById('ua-panel');
+let secildi = 0;
+
+// DevExtreme's way: the button reacts to pointer events, and builds its menu
+// on first open, a moment later.
+function girisSayfasi({ menuVar = true } = {}) {
+  uyap.innerHTML = '<div class="dx-button">Adalet E-imza İle Giriş</div><div class="dx-button" id="ed">E-Devlet İle Giriş</div>';
+  document.getElementById('ed').addEventListener('pointerup', () => {
+    if (!menuVar || document.querySelector('.dx-list-item')) return;
+    setTimeout(() => {
+      uyap.insertAdjacentHTML('beforeend', '<div class="dx-list-item" role="option">Mobil İmza İle Giriş</div><div class="dx-list-item" role="option">E-İmza ile Giriş</div>');
+      document.querySelector('.dx-list-item').addEventListener('pointerup', () => secildi++);
+    }, 200);
+  });
+}
+
+const bolum = () => document.getElementById('ua-giris');
+const dugme = (yazi) => [...(bolum()?.querySelectorAll('button') || [])].find((b) => b.textContent === yazi);
+const listeGorunur = () => getComputedStyle(document.getElementById('listele')).display !== 'none';
+
+function kur(depo, izin, mesajlar = []) {
+  return hizliGirisiKur({
+    depo,
+    mesaj: async (m) => { mesajlar.push(m.kind); return m.kind === 'hizliGirisIzni' ? { izin } : { ok: true }; }
+  });
+}
+
+try {
+  // Not set up yet: an offer, which can be turned away for good.
+  girisSayfasi();
+  let depo = depoYap();
+  let mesajlar = [];
+  let k = kur(depo, false, mesajlar);
+  await uyu(500);
+  ok('panel: kurulmamışken kurulum önerisi', Boolean(dugme('Kur')) && !dugme('Giriş Yap'));
+  ok('panel: bölüm panelin içinde, ayrı kutu yok', bolum()?.parentElement === panel.querySelector('.ua-body') && getComputedStyle(bolum()).position !== 'fixed');
+  ok('panel: giriş sayfasında listeleme gizli', !listeGorunur());
+  ok('panel: kurulmamışken izin sorulmuyor', !mesajlar.includes('hizliGirisIzni'));
+  dugme('Kur').click();
+  await uyu(50);
+  ok('panel: Kur kurulum sayfasını istiyor', mesajlar.includes('hizliGirisAyarlari'));
+  dugme('Gösterme').click();
+  await uyu(50);
+  ok('panel: "gösterme" kaydedildi, bölüm kalktı, listeleme döndü', depo.veri.hizliGirisGizli === true && !bolum() && listeGorunur());
+  k.durdur();
+
+  k = kur(depo, false);
+  await uyu(500);
+  ok('panel: gizlenmişse bölüm çıkmıyor', !bolum());
+  k.durdur();
+
+  // Set up, permission held: the masked number and one button.
+  depo = depoYap({ mobilImza: BILGI });
+  k = kur(depo, true);
+  await uyu(500);
+  ok('panel: kuruluysa Giriş Yap', Boolean(dugme('Giriş Yap')));
+  ok('panel: maskeli numara ve operatör', bolum()?.textContent.includes('0532 *** ** 67 · Turkcell'), bolum()?.textContent);
+  ok('panel: kimlik no ve tam numara sayfaya yazılmıyor', !/10000000146|5321234567|1234567/.test(panel.innerHTML + uyap.innerHTML));
+
+  const once = Date.now();
+  dugme('Giriş Yap').click();
+  await uyu(1500);
+  ok('giriş: istek notu bırakıldı', typeof depo.veri.mobilImzaIstegi === 'number' && depo.veri.mobilImzaIstegi >= once);
+  ok('giriş: E-Devlet → Mobil İmza seçildi', secildi === 1, String(secildi));
+  ok('giriş: telefondan onay söyleniyor', /telefonunuzdan onaylayın/.test(bolum()?.textContent || ''));
+
+  // The panel redraws its body: the section comes back.
+  panel.querySelector('.ua-body').innerHTML = '<div class="ua-bar" id="listele">Evrakları Listele</div>';
+  await uyu(600);
+  ok('panel: yeniden çizilince bölüm geri geliyor', Boolean(dugme('Giriş Yap')) && !listeGorunur());
+
+  // The login screen goes (logged in) and comes back (logged out).
+  uyap.innerHTML = '';
+  await uyu(500);
+  ok('panel: giriş yapılınca bölüm kalkıyor, listeleme dönüyor', !bolum() && listeGorunur() && !panel.classList.contains('is-giris'));
+  girisSayfasi();
+  await uyu(500);
+  ok('panel: giriş sayfası dönünce bölüm geri geliyor', Boolean(dugme('Giriş Yap')));
+  k.durdur();
+
+  // UYAP changed its buttons: say what to click instead of failing silently.
+  girisSayfasi({ menuVar: false });
+  k = kur(depo, true);
+  await uyu(500);
+  dugme('Giriş Yap').click();
+  await uyu(4000);
+  ok('giriş: menü yoksa ne yapılacağı söyleniyor', /kendiniz seçin/.test(bolum()?.textContent || ''));
+  k.durdur();
+
+  // Details saved but e-Devlet access refused.
+  girisSayfasi();
+  k = kur(depoYap({ mobilImza: BILGI }), false);
+  await uyu(500);
+  ok('panel: izin yoksa söylüyor', /erişim izni yok/.test(bolum()?.textContent || '') && !dugme('Giriş Yap'));
+  k.durdur();
+  uyap.innerHTML = '';
+} catch (e) {
+  log.push('İSTİSNA ' + (e?.stack || e));
+}
+
+/* ------------------------------------------------------ e-Devlet's form */
+
+// `imzaAdimi`: e-Devlet redraws the page with the "İmzala" step after "Devam Et".
+function edevletFormu({ imzaAdimi = false } = {}) {
+  const b = document.implementation.createHTMLDocument('e-Devlet');
+  b.body.innerHTML = `
+    <a href="/Giris/Elektronik-Imza">Elektronik İmza</a><a href="/Giris/Mobil-Imza" id="sekme">Mobil İmza</a>
+    <form id="loginForm" method="post">
+      <input type="number" id="tridField" name="tridField" maxlength="11">
+      <input type="text" id="gsmField" name="gsmField" maxlength="10">
+      <input type="radio" class="radioButton" id="turktelekom" name="gsmtype" value="2">
+      <input type="radio" class="radioButton" id="turkcell" name="gsmtype" value="1">
+      <input type="radio" class="radioButton" id="vodafone" name="gsmtype" value="3">
+      <button type="button" name="cancelButton">İptal</button>
+      <button type="submit" name="submitButton">Devam Et</button>
+    </form>`;
+  const gonderilen = [];
+  const sayac = { imzala: 0, sekme: 0 };
+  b.querySelector('[name="submitButton"]').addEventListener('click', (e) => {
+    e.preventDefault();
+    const f = b.getElementById('loginForm');
+    gonderilen.push({ tc: f.tridField.value, gsm: f.gsmField.value, op: f.querySelector('[name="gsmtype"]:checked')?.value });
+    if (imzaAdimi) {
+      setTimeout(() => {
+        f.innerHTML = '<p>Doğrulama: KEDİ</p><button type="button">İmzalamadan Çık</button> <button type="button" id="imzala"> İmzala </button>';
+        b.getElementById('imzala').addEventListener('click', () => sayac.imzala++);
+      }, 700);
+    }
+  });
+  b.getElementById('sekme').addEventListener('click', (e) => { e.preventDefault(); sayac.sekme++; });
+  return { belge: b, gonderilen, sayac };
+}
+
+/** The "İmzala" page as a fresh page load. */
+function imzalaSayfasi() {
+  const b = document.implementation.createHTMLDocument('e-Devlet');
+  b.body.innerHTML = '<form id="loginForm"><button type="button" name="cancelButton">İptal</button><button type="button" id="imzala">İmzala</button></form>';
+  const sayac = { imzala: 0, iptal: 0 };
+  b.getElementById('imzala').addEventListener('click', () => sayac.imzala++);
+  b.querySelector('[name="cancelButton"]').addEventListener('click', () => sayac.iptal++);
+  return { belge: b, sayac };
+}
+
+const arama = (donus) =>
+  '?oauthClientId=x&continue=' +
+  encodeURIComponent('https://giris.turkiye.gov.tr/OAuth2AuthorizationServer/AuthorizationController?response_type=code&redirect_uri=' +
+    encodeURIComponent(donus) + '&state=s');
+const UYAPA = { pathname: '/Giris/Mobil-Imza', search: arama('https://avukat.uyap.gov.tr/giris') };
+const IMZA_SAYFASI = { pathname: '/Giris/Mobil-Imza-Onay', search: '' };
+
+try {
+  const simdi = () => Date.now();
+  let f = edevletFormu();
+  let depo = depoYap({ mobilImza: BILGI });
+  ok('e-Devlet: istek yokken dokunmuyor', (await calistir({ belge: f.belge, konum: UYAPA, depo, simdi })) === 'istek yok' && f.belge.getElementById('tridField').value === '');
+
+  depo = depoYap({ mobilImza: BILGI, mobilImzaIstegi: Date.now() - 120_000 });
+  ok('e-Devlet: eski istekle dokunmuyor', (await calistir({ belge: f.belge, konum: UYAPA, depo, simdi })) === 'istek yok');
+
+  depo = depoYap({ mobilImza: BILGI, mobilImzaIstegi: Date.now() });
+  const baska = { pathname: '/Giris/Mobil-Imza', search: arama('https://www.example.com/cb') };
+  ok('e-Devlet: başka siteye girişte dokunmuyor', (await calistir({ belge: f.belge, konum: baska, depo, simdi })) === 'uyap dönüşü değil' && f.gonderilen.length === 0);
+
+  // Same page redrawn with the "İmzala" step.
+  f = edevletFormu({ imzaAdimi: true });
+  depo = depoYap({ mobilImza: BILGI, mobilImzaIstegi: Date.now() });
+  const sonuc = await calistir({ belge: f.belge, konum: UYAPA, depo, simdi });
+  ok('e-Devlet: form gönderildi ve İmzala basıldı', sonuc === 'gönderildi ve imzalandı' && f.sayac.imzala === 1, sonuc);
+  ok('e-Devlet: gönderilen değerler doğru', JSON.stringify(f.gonderilen) === JSON.stringify([{ tc: '10000000146', gsm: '5321234567', op: '1' }]), JSON.stringify(f.gonderilen));
+  ok('e-Devlet: iki not da kullanıldı', !('mobilImzaIstegi' in depo.veri) && !('mobilImzaImzala' in depo.veri));
+  ok('e-Devlet: kullanıcıya telefon onayı söylendi', /onaylayın/.test(f.belge.getElementById('ua-edevlet-not')?.textContent || ''));
+  ok('e-Devlet: ikinci kez gönderilmiyor', (await calistir({ belge: f.belge, konum: UYAPA, depo, simdi })) === 'istek yok' && f.gonderilen.length === 1 && f.sayac.imzala === 1);
+
+  // "Devam Et" loads a new page: the note carries the step across.
+  f = edevletFormu();
+  depo = depoYap({ mobilImza: BILGI, mobilImzaIstegi: Date.now() });
+  ok('e-Devlet: yeni sayfa yüklenecekse yalnızca gönderiyor', (await calistir({ belge: f.belge, konum: UYAPA, depo, simdi })) === 'gönderildi' && typeof depo.veri.mobilImzaImzala === 'number');
+  let s = imzalaSayfasi();
+  ok('e-Devlet: sonraki sayfada İmzala basıldı', (await calistir({ belge: s.belge, konum: IMZA_SAYFASI, depo, simdi })) === 'imzalandı' && s.sayac.imzala === 1 && s.sayac.iptal === 0);
+  ok('e-Devlet: İmzala bir kez', (await calistir({ belge: s.belge, konum: IMZA_SAYFASI, depo, simdi })) === 'istek yok' && s.sayac.imzala === 1);
+
+  s = imzalaSayfasi();
+  depo = depoYap({ mobilImza: BILGI, mobilImzaImzala: Date.now() - 61_000 });
+  ok('e-Devlet: eski imza notuyla basmıyor', (await calistir({ belge: s.belge, konum: IMZA_SAYFASI, depo, simdi })) === 'istek yok' && s.sayac.imzala === 0);
+
+  s = imzalaSayfasi();
+  depo = depoYap({ mobilImzaImzala: Date.now() });
+  ok('e-Devlet: bilgiler silindiyse basmıyor', (await calistir({ belge: s.belge, konum: IMZA_SAYFASI, depo, simdi })) === 'istek yok' && s.sayac.imzala === 0);
+
+  // Pressing "Giriş Yap" again after a failed try: the new request wins.
+  f = edevletFormu();
+  depo = depoYap({ mobilImza: BILGI, mobilImzaIstegi: Date.now(), mobilImzaImzala: Date.now() - 5000 });
+  ok('e-Devlet: yeni istek eski imza notunun önüne geçiyor', (await calistir({ belge: f.belge, konum: UYAPA, depo, simdi })) === 'gönderildi' && f.gonderilen.length === 1);
+
+  f = edevletFormu();
+  depo = depoYap({ mobilImza: { ...BILGI, operator: 'vodafone' }, mobilImzaIstegi: Date.now() });
+  const sifreSekmesi = { pathname: '/Giris/gir', search: UYAPA.search };
+  ok('e-Devlet: başka sekmede mobil imzaya geçiyor', (await calistir({ belge: f.belge, konum: sifreSekmesi, depo, simdi })) === 'sekme değiştirildi' && f.sayac.sekme === 1);
+  ok('e-Devlet: sekme değişirken istek korunuyor', 'mobilImzaIstegi' in depo.veri);
+  await calistir({ belge: f.belge, konum: UYAPA, depo, simdi });
+  ok('e-Devlet: operatör kayıttan', f.gonderilen[0]?.op === '3');
+
+  const bos = document.implementation.createHTMLDocument('değişmiş');
+  depo = depoYap({ mobilImza: BILGI, mobilImzaIstegi: Date.now() });
+  ok('e-Devlet: form tanınmazsa söylüyor', (await calistir({ belge: bos, konum: UYAPA, depo, simdi })) === 'form bulunamadı' && /tanınmadı/.test(bos.getElementById('ua-edevlet-not')?.textContent || ''));
+} catch (e) {
+  log.push('İSTİSNA ' + (e?.stack || e));
+}
+
+log.push('BİTTİ');
+goster();
+</script>
+</body></html>

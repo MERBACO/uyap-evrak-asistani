@@ -1,0 +1,6 @@
+# Keep the sources exactly as they ship: LF everywhere, on every platform.
+# Windows Git would otherwise rewrite them with CRLF on checkout.
+* text=auto eol=lf
+
+*.ttf binary
+*.png binary

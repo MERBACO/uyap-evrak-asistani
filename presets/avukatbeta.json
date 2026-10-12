@@ -1,0 +1,57 @@
+{
+  "id": "avukatbeta",
+  "label": "UYAP Avukat Portal (avukat.uyap.gov.tr)",
+  "schemaVersion": 1,
+  "origin": "https://avukat.uyap.gov.tr",
+  "verifiedAt": "2026-08-26",
+  "note": "Uçlar avukat.uyap.gov.tr üzerinde doğrulandı (26.08.2026). Kaydediciye gerek yok: liste isteği portalın kendi isteğinden birebir tekrarlanır, alan eşleştirmesi canlı yanıttan çıkarılır. Portal değişirse docs/ENDPOINT-DISCOVERY.md.",
+  "dosya": {
+    "idFromUrl": "",
+    "birimFromResponse": "",
+    "esasNoFromResponse": ""
+  },
+  "endpoints": {
+    "evrakListesi": {
+      "method": "POST",
+      "path": "/list_dosya_evraklar.ajx",
+      "bodyTemplate": "{\"dosyaId\":\"{{dosyaId}}\"}",
+      "headers": {},
+      "listPath": "tumEvraklar.*",
+      "fields": {
+        "id": "evrakId",
+        "ad": "tur",
+        "tur": "tur",
+        "tarih": "onaylandigiTarih",
+        "klasor": "",
+        "uzanti": "",
+        "ekler": "ekEvrakListesi",
+        "dosyaId": "dosyaId"
+      },
+      "pagination": {
+        "enabled": false,
+        "pageParam": "sayfa",
+        "sizeParam": "boyut",
+        "size": 100,
+        "totalPath": ""
+      }
+    },
+    "evrakIndir": {
+      "method": "GET",
+      "path": "/download_document_brd.uyap?dosyaId=%22{{dosyaId}}%22&evrakId=%22{{evrakId}}%22",
+      "bodyTemplate": null,
+      "headers": {},
+      "responseKind": "binary",
+      "base64Path": "",
+      "filenameFromHeader": true
+    },
+    "durusmaListesi": {
+      "method": "POST",
+      "path": "/avukat_durusma_sorgula_brd.ajx",
+      "bodyTemplate": "{\"baslangicTarihi\":\"{{baslangicTarihi}}\",\"bitisTarihi\":\"{{bitisTarihi}}\"}",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "note": "Portalın Yaklaşan Duruşmalarım kartının kendi çağrısı (7 gün); eklenti aynı isteği 30 günle yineler. Portal kodundan çıkarıldı, 05.10.2026."
+    }
+  }
+}

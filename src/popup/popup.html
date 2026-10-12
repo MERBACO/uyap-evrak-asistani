@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>UYAP Dosyalama ve Evrak Asistanı</title>
+<style>
+  :root {
+    --ink: #16202e; --ink-2: #5c6b7a; --line: #dce3ea;
+    --paper: #fff; --tint: #f4f7fa; --seal: #93221f; --ok: #1f6b4a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    width: 420px; margin: 0; background: var(--paper); color: var(--ink);
+    font: 400 13px/1.5 -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  header { padding: 12px 14px; background: var(--tint); border-bottom: 1px solid var(--line); }
+  .eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .18em; color: var(--seal); }
+  h1 { margin: 1px 0 0; font-size: 14px; font-weight: 600; }
+  main { padding: 12px 14px 16px; }
+  section { padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+  section:last-child { border: 0; margin-bottom: 0; padding-bottom: 0; }
+  h2 { margin: 0 0 6px; font-size: 12px; font-weight: 600; }
+  p  { margin: 0 0 8px; color: var(--ink-2); font-size: 12px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button {
+    padding: 6px 12px; border: 1px solid var(--line); border-radius: 3px;
+    background: var(--paper); color: var(--ink); font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--ink-2); }
+  button:disabled { opacity: .45; cursor: default; }
+  .primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .primary:hover:not(:disabled) { background: #0e1826; }
+  .rec-on { background: var(--seal); border-color: var(--seal); color: #fff; }
+  .status { font-size: 11.5px; color: var(--ink-2); margin-top: 8px; min-height: 16px; }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--seal); }
+  ul.calls li {
+    display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center;
+    padding: 5px 6px; border: 1px solid var(--line); border-radius: 3px; margin-bottom: 5px;
+  }
+  .pick button { padding: 3px 7px; font-size: 11px; }
+  :focus-visible { outline: 2px solid var(--seal); outline-offset: 2px; }
+
+  /* The popup is read once, carefully, then rarely again: give it room to
+     breathe and a scrollbar that does not crowd the text. */
+  body { max-height: 580px; overflow-y: auto; }
+  body::-webkit-scrollbar { width: 10px; }
+  body::-webkit-scrollbar-thumb {
+    background: var(--line);
+    border-radius: 5px;
+    border: 3px solid var(--paper);
+  }
+  body::-webkit-scrollbar-thumb:hover { background: var(--ink-2); }
+
+  header { position: sticky; top: 0; z-index: 1; }
+  h2 { margin-top: 16px; letter-spacing: .01em; }
+  #hakkinda ol.adimlar li,
+  #hakkinda ul li { margin-bottom: 7px; }
+  #hakkinda ol.adimlar { padding-left: 20px; }
+  .imza { line-height: 1.6; }
+
+  /* A hint sits under the step it belongs to, quieter than the instruction. */
+  .ipucu { display: block; margin-top: 4px; color: var(--ink-2); font-size: 12px; }
+
+  /* Settings read better as a list of names and what they do than as prose. */
+  dl.ayarlar { margin: 8px 0 0; }
+  dl.ayarlar dt { font-weight: 600; margin-top: 9px; }
+  dl.ayarlar dd { margin: 2px 0 0; padding-left: 12px; border-left: 2px solid var(--line); }
+
+  /* Opening view: what this is, who wrote it, what it will not do. */
+  #hakkinda h2 { font-size: 13px; margin-bottom: 8px; }
+  #hakkinda p { font-size: 12.5px; line-height: 1.55; }
+  #hakkinda ul { margin: 0 0 10px; padding-left: 18px; font-size: 12.5px; color: var(--ink-2); }
+  #hakkinda ol.adimlar { margin: 0 0 10px; padding-left: 18px; font-size: 12.5px; color: var(--ink-2); }
+  #hakkinda ol.adimlar li { margin-bottom: 6px; line-height: 1.5; }
+  #hakkinda ol.adimlar b { color: var(--ink); font-weight: 600; }
+  #hakkinda li { margin-bottom: 4px; }
+  .imza {
+    margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line);
+    font-size: 12px; color: var(--ink-2);
+  }
+  .imza b { color: var(--ink); font-weight: 600; }
+  .surum { font: 400 11px ui-monospace, Menlo, monospace; color: var(--ink-2); }
+  .link {
+    background: none; border: 0; padding: 0; color: var(--ink-2);
+    font: inherit; font-size: 12px; text-decoration: underline;
+    text-underline-offset: 2px; cursor: pointer;
+  }
+  .link:hover { color: var(--seal); }
+  [hidden] { display: none !important; }
+
+  /* Quick login: a small form, set up once and then out of the way. */
+  #hizli-giris { padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+  #hizli-giris h2 { margin-top: 2px; }
+  #hizli-giris form { display: grid; gap: 8px; margin-top: 6px; }
+  #hizli-giris label { display: grid; gap: 3px; font-size: 12px; font-weight: 600; }
+  #hizli-giris input[type="text"] {
+    padding: 6px 8px; border: 1px solid var(--line); border-radius: 3px;
+    font: inherit; font-size: 13px; font-weight: 400; color: var(--ink);
+  }
+  #hizli-giris input[type="text"]:focus { border-color: var(--ink-2); outline: none; }
+  #hizli-giris fieldset { margin: 0; padding: 0; border: 0; }
+  #hizli-giris legend { padding: 0; margin-bottom: 3px; font-size: 12px; font-weight: 600; }
+  #hizli-giris fieldset label { display: inline-flex; gap: 4px; margin-right: 12px; font-weight: 400; }
+  .kayitli { font-size: 12.5px; }
+  .kayitli b { font-weight: 600; }
+  .secim { display: flex; gap: 6px; align-items: center; margin-top: 8px; font-size: 12px; }
+  #durusmalar { padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">UYAP DOSYALAMA VE EVRAK ASİSTANI</div>
+  <h1>Dosyanın evraklarını kronolojik indirin</h1>
+</header>
+
+<main>
+  <section id="hizli-giris">
+    <h2>Mobil İmza ile Hızlı Giriş</h2>
+    <p>UYAP'ın giriş sayfasında sağ alttaki panelde bir <b>Giriş Yap</b> düğmesi
+    çıkar. Basınca e-Devlet'in mobil imza formu bu bilgilerle doldurulup gönderilir
+    ve <b>İmzala</b>'ya basılır; siz yalnızca telefonunuza gelen isteği
+    onaylarsınız.</p>
+
+    <div id="hg-kayitli" class="kayitli" hidden>
+      <p id="hg-ozet"></p>
+      <div class="row">
+        <button type="button" id="hg-degistir">Değiştir</button>
+        <button type="button" id="hg-sil">Bilgileri Sil</button>
+      </div>
+    </div>
+
+    <div class="row" id="hg-kur-satiri">
+      <button type="button" class="primary" id="hg-kur">Kur</button>
+    </div>
+
+    <form id="hg-form" hidden autocomplete="off" novalidate>
+      <label>T.C. kimlik no
+        <input type="text" id="hg-tc" inputmode="numeric" maxlength="11" autocomplete="off" spellcheck="false">
+      </label>
+      <label>Mobil imzalı GSM numarası
+        <input type="text" id="hg-gsm" inputmode="tel" maxlength="17" placeholder="5XX XXX XX XX" autocomplete="off" spellcheck="false">
+      </label>
+      <fieldset id="hg-operator">
+        <legend>Operatör</legend>
+      </fieldset>
+      <div class="row">
+        <button type="submit" class="primary">Kaydet</button>
+        <button type="button" id="hg-vazgec">Vazgeç</button>
+      </div>
+      <p class="ipucu">Bilgiler yalnızca bu bilgisayarda, tarayıcının eklenti
+      deposunda tutulur ve yalnızca <b>Giriş Yap</b>'a bastığınızda e-Devlet'in
+      mobil imza formuna yazılır. Parola ya da PIN istenmez, saklanmaz: girişi
+      telefonunuzdaki onay yapar. Kaydederken Chrome, eklentinin
+      <i>giris.turkiye.gov.tr</i> sayfasına erişmesi için izin ister. Bilgisayarı
+      başkalarıyla ortak kullanıyorsanız bu özelliği kurmayın.</p>
+    </form>
+    <p class="status" id="hg-durum" aria-live="polite"></p>
+  </section>
+
+  <section id="durusmalar">
+    <h2>Duruşmalar</h2>
+    <p>UYAP'a girdiğinizde panelin <b>Duruşmalar</b> bölümü bugünden başlayarak
+    30 günlük duruşmalarınızı kendiliğinden alır. Son alınan liste burada da
+    tablo olarak açılabilir; yazdırabilir ya da Excel'e aktarabilirsiniz.</p>
+    <div class="row">
+      <button type="button" id="durusma-tablo">Duruşma Tablosu</button>
+    </div>
+  </section>
+
+  <div id="hakkinda">
+    <section>
+      <h2>Bu eklenti ne yapar?</h2>
+      <p>UYAP Avukat Portal'da açtığınız bir dosyanın evraklarını, portalda tek tek
+      indirmek yerine topluca ve <b>tarih sırasıyla</b> bilgisayarınıza indirir.</p>
+      <ul>
+        <li>Dosya adları sıra numarasıyla başlar; klasörün kendi sıralaması kronolojiyi korur</li>
+        <li>Tümü tek klasöre iner, bağlı dosyadan gelen evrak adında belli olur</li>
+        <li>Ekler ana evrağın hemen ardında, numaralanmış olarak iner</li>
+        <li>İşinize yaramayan evrak türlerini eleyebilir, bu tercihi kalıcı yapabilirsiniz</li>
+        <li>İçeriği birebir aynı olan evraklar bir kez indirilir</li>
+        <li>Seçili evraklar, uzantı farkı gözetmeksizin tek belgede yazdırılabilir
+            veya PDF olarak kaydedilebilir — taranmış TIFF evraklar dahil</li>
+        <li>Uzun dosyalarda arama kutusu ve tarih aralığıyla daraltılabilir;
+            içerikler tarandıktan sonra evrakların <b>içinde</b> de aranır</li>
+        <li>Son bakışınızdan sonra gelen evraklar <b>YENİ</b> diye işaretlenir; her
+            dosyanın listeleme, indirme ve yazdırma geçmişi panelde görünür</li>
+        <li>Klasöre, evrakları durumlarıyla listeleyen bir <b>Excel dizini</b> konur</li>
+        <li>Yazdırılan belgede içindekiler sayfası, yer imleri ve sayfa numaraları olur</li>
+        <li>Dilerseniz hepsi tek bir zip dosyası olarak iner</li>
+        <li>İsteğe bağlı <b>mobil imza ile hızlı giriş</b>: UYAP'ın giriş sayfasında
+            tek tık, gerisi telefonunuzdan onay</li>
+        <li><b>30 günlük duruşma listesi</b>: UYAP'a girince kendiliğinden gelir; tablo
+            olarak açılır, yazdırılır, Excel'e aktarılır</li>
+      </ul>
+      <p>Yalnızca vekâletiniz bulunan, portalın size zaten gösterdiği dosyalarda
+      çalışır. Hiçbir yetkilendirmeyi aşmaz. İndirilen evraklar doğrudan sizin
+      diskinize iner; eklentinin sunucusu yoktur, geliştiriciye hiçbir veri ulaşmaz.
+      Hızlı giriş bilgileri yalnızca bu bilgisayarda durur ve yalnızca e-Devlet'in
+      kendi mobil imza formuna yazılır.</p>
+      <h2>Nasıl kullanılır?</h2>
+      <ol class="adimlar">
+        <li><b>Duruşmalarınıza bakın.</b> UYAP'a girdiğinizde panelin en üstündeki
+            <b>Duruşmalar</b> satırı bugünden başlayarak 30 günlük duruşma ve
+            keşiflerinizi kendiliğinden alır: kaç tane olduğunu ve ilkini yazar.
+            Satıra basınca liste açılır; <b>Tabloyu Aç</b> bütün sütunlarıyla, gün gün
+            ayrılmış bir tablo açar, oradan yazdırabilir ya da Excel'e
+            aktarabilirsiniz. Liste bir saatten eskiyse ya da önceki bir günden
+            kalmışsa kendiliğinden yenilenir (sayfa yenilenene kadar bir kez);
+            <b>Yenile</b> ile hemen yeniletebilirsiniz.</li>
+
+        <li><b>Dosyayı açın</b> ve <b>Evrak</b> sekmesine girin. Panel sağ altta,
+            küçük olarak belirir; evraklar listelenince aynı köşede kalıp yukarı doğru
+            uzar. Başlığından tutup taşıyabilir, sağ alt köşedeki kırmızı çizgili
+            tutamaktan çekerek büyütebilirsiniz; bir kez elle oynattığınızda yeri ve
+            boyutu sizindir. Her durumda pencerenin içinde kalır.</li>
+
+        <li><b>Evrakları Listele</b>'ye basın. Evraklar en eskiden en yeniye
+            sıralanır. Her satırda evrağın türü, altında tarihi ile taraf bilgisi
+            veya gönderen birim yazar.
+            <br><span class="ipucu">Evrak sekmesine girmeniz yeterlidir; portalın
+            ağacında bir şeye tıklamanız gerekmez, dosyanın tamamı ve bağlı
+            dosyaları birlikte gelir.</span></li>
+
+        <li><b>Listeyi daraltın.</b> Arama kutusuna evrak adı, taraf ya da tür
+            yazabilir, tarih aralığı verebilirsiniz. Dosyaya bağlı soruşturma ve
+            talimat dosyaları varsa <b>Dosyalar</b> bölümü çıkar; oradan tek bir
+            dosyanın evraklarını seçebilir ya da bir dosyayı tümüyle
+            eleyebilirsiniz. <b>Türler</b> bölümünden
+            istemediğiniz türlerin kutucuğunu kaldırın; en üstteki <b>Tüm türler</b>
+            hepsini birden açıp kapatır. Bir tür her dosyada elensin isterseniz
+            <b>+ Her Dosyada Ele</b>'ye basın; <b>Varsayılana dön</b> ise kalıcı
+            olarak elediğiniz türler hariç hepsini geri getirir, toplu seçimden
+            sonra tek tek işaretlemek gerekmez.
+            <br><span class="ipucu">Elenen evraklar kaybolmaz, listede soluk
+            görünür. Portalın tür yerine dosya adı yazdığı evraklar tek bir
+            <b>Adsız belge</b> başlığında toplanır.</span></li>
+
+        <li><b>Evrakların içinde arayın.</b> <b>İçerikleri Tara</b>'ya bastığınızda
+            evraklar portaldan alınıp içlerindeki metin okunur; arama kutusu
+            bundan sonra evrak adının yanında evrakların <b>içinde</b> de arar ve
+            kelimenin geçtiği cümle satırın altında vurgulu görünür. Türkçe harf
+            ve büyük/küçük harf fark etmez ("bilirkisi" yazınca "Bilirkişi" de
+            bulunur), birden çok kelime yazarsanız hepsinin geçtiği evraklar gelir.
+            UDF, PDF (parola istemeyen şifreli PDF'ler dahil), Word, Excel, KEP
+            iletisi, HTML ve EYP paketlerinin içi aranır; taranmış görüntülerde
+            metin olmadığı için bunlar ayrıca bildirilir.
+            <br><span class="ipucu">Tarama, indirme kadar istek demektir; daha
+            önce indirdiğiniz ya da yazdırdığınız evraklar yeniden alınmaz.
+            Okunan metin yalnızca açık sayfanın belleğinde tutulur, hiçbir yere
+            kaydedilmez; sayfayı yenileyince yeniden taramanız gerekir.</span></li>
+
+        <li><b>Yeni gelenlere bakın.</b> Bir dosyayı daha önce listelediyseniz,
+            o zamandan beri gelen evrakların başında yeşil <b>YENİ</b> etiketi
+            olur ve panel kaç tane olduğunu, son ne zaman baktığınızı yazar.
+            <b>Sadece Yeniler</b> düğmesi yalnızca onları seçer. Etiketler sayfa
+            yenilenene kadar kalır; dosyayı ilk kez listelediğinizde hiçbir evrak
+            yeni sayılmaz.
+            <br><span class="ipucu"><b>İşlem Geçmişi</b> bölümü dosyayı en son ne
+            zaman listelediğinizi, varsa son indirmeyi ve son yazdırmayı yazar;
+            hiç listeleme yapılmadıysa "Bu dosyada daha önce listeleme yapılmadı"
+            der. Açınca dosyadaki bütün listeleme, indirme ve yazdırma işlemleri
+            tarih ve sayılarıyla görünür; bu ziyarette yapılanlar işaretlidir.
+            Art arda iki listeleme tek kayıt sayılır, iptal edilen bir yazdırma
+            kaydedilmez.</span></li>
+
+        <li><b>İndirin.</b> <b>… Evrağı İndir</b>'e bastığınızda evraklar, dosya
+            adını taşıyan tek bir klasöre iner. Adları sıra numarasıyla başladığı
+            için klasörün kendi sıralaması kronolojiyi korur.</li>
+
+        <li><b>Yazdırın.</b> Büyük dosyalarda evraklar indikten sonra bir de
+            <b>birleştirme</b> aşaması vardır; panel kaçıncı evrakta olduğunu
+            yazar. Bu sırada sayfayı kapatmayın.
+            <b>Yazdır / PDF İndir</b> seçili evrakların tümünü —
+            biçim farkı gözetmeksizin — tek belgede birleştirir ve yeni sekmede
+            açar. Yazdırma penceresinde hedef olarak yazıcınızı ya da
+            "PDF olarak kaydet"i seçebilirsiniz.</li>
+      </ol>
+      <p class="ipucu" style="margin-top:-4px">İşlem sürerken panel kaç evrağın
+      alındığını ve <b>yaklaşık ne kadar kaldığını</b> yazar. Süre tahmini
+      saniyede bir güncellenir ve gerçekten yavaşlama olmadıkça artmaz; <b>Duraklat</b> ve
+      <b>İptal Et</b> düğmeleri belirir, vazgeçmek için sayfayı kapatmanız
+      gerekmez.</p>
+      <p class="ipucu"><b>Hız.</b> İndirme, yazdırma ve içerik taraması evrakları
+      UYAP'tan tek tek, birkaç saniye arayla ister: dakikada yaklaşık 16 evrak.
+      İndir ve Yazdır düğmelerinin üstünde seçili evraklar için tahmini süre yazar.
+      UYAP erişimi yine de durdurursa eklenti sonraki işlerde daha da yavaşlar,
+      engelsiz işlerden sonra bu tempoya döner.</p>
+      <p class="ipucu"><b>Kaldığı yerden devam.</b> İndirme ya da yazdırma UYAP
+      engeli, iptal ya da oturum düşmesiyle yarım kalırsa panel bunu kaydeder ve
+      <b>Kaldığı Yerden Devam Et</b> düğmesini gösterir. İndirmede inmiş evraklar
+      korunur ve yeniden istenmez; kayıt sayfayı yenileseniz de durur. Zip açıksa
+      yarım kalan iş "(yarım).zip" olarak teslim edilir. Yazdırmada alınmış evraklar
+      sayfanın belleğinde bekler, devamda yalnızca kalanlar istenir; bunun için
+      sayfayı kapatmayın ya da yenilemeyin. İndirmede UYAP'ın reddettiği evraklar
+      devamda yeniden istenmez. UYAP engelinden sonraki bekleme sürerken düğme
+      kapalıdır ve kaç dakika sonra açılacağını yazar; süre dolunca kendiliğinden,
+      <b>Beklemeyi Kaldır</b>'a basınca hemen açılır.</p>
+      <p class="ipucu"><b>Eklenti çalışıyor mu, takıldı mı?</b> İşlem sürerken durum
+      yazısının altında yeşil bir nokta ve bir sayaç vardır: <i>"Çalışıyor · 3 dk 12
+      sn"</i>. Nokta saniyede bir yanıp sönüyor ve sayaç artıyorsa eklenti
+      çalışıyordur; bir evrak birkaç saniyeden uzun sürerse hangisinde beklendiği
+      de yazar (<i>"şu an: 149 · Bilirkişi Raporu (7 sn)"</i>). Hiçbir şey uzun süre
+      ilerlemezse satır sarıya döner ve hangi evrakta, kaçıncı denemede beklendiğini
+      söyler; beklemeye devam edebilir ya da <b>İptal Et</b>'e basabilirsiniz.
+      Sayaç da nokta da durduysa sayfa gerçekten donmuştur. Yazdırmada evraklar
+      alındıktan sonraki aşamalar da (aynı içerikli evrakları ayıklama, birleştirme,
+      içindekiler, PDF dosyasını yazma) ayrı ayrı yazılır.</p>
+
+      <h2>Ayarlar</h2>
+      <p>Panelde <b>Evrakları Listele</b>'nin hemen yanındaki <b>Ayarlar</b> düğmesiyle
+      açılır; seçimler bu bilgisayarda saklanır.</p>
+      <dl class="ayarlar">
+        <dt>Kayıt klasörü</dt>
+        <dd>Evrakların ineceği ana klasör. Her dosya kendi alt klasörünü alır.</dd>
+
+        <dt>Aynı içerikli evrağı bir kez indir</dt>
+        <dd>Yirmi evrağa iliştirilmiş aynı ek bir kez iner — <b>ve bir kez
+            yazdırılır</b>. Evrağın <b>ilk geçtiği yer</b> korunur, sonraki
+            tekrarlar elenir; listede hangi evrakla aynı olduğu yazar. Görseller
+            resim olarak karşılaştırılır, yani aynı ekran görüntüsü farklı
+            biçimlerde gelse de yakalanır. Çıkarılan kopya sayısı hem panelde hem
+            kapak sayfasında görünür.</dd>
+
+        <dt>Yazdırırken kapak sayfası ekle</dt>
+        <dd>Çıktının başına dosya kapağı koyar: üstte mahkeme adı ve dosya no,
+            altında künye (dosya türü, evrak sayısı, tarih aralığı, çıktı tarihi),
+            sonra <b>Taraflar</b>, <b>Duruşma / Keşif Tarihleri</b> ve <b>Notlar</b>
+            için el yazısıyla doldurulacak çizgili bölümler. Künyedeki
+            <b>Ofis dosya no</b> alanı boş bırakılır; büronuzun kendi numarasını
+            elle yazmanız için. En altta çıktının
+            nasıl okunacağını anlatan üç satır bulunur.</dd>
+
+        <dt>Yazdırırken içindekiler, yer imleri ve sayfa numarası ekle</dt>
+        <dd>Kapaktan sonra bir <b>içindekiler</b> sayfası koyar: her evrağın sıra
+            numarası, tarihi, adı ve başladığı sayfa. Ekranda satırlara tıklayınca
+            o evrağa gidilir. PDF açıldığında kenar çubuğunda her evrak bir
+            <b>yer imi</b> olarak görünür; ekler ana evrağın altında toplanır.
+            Her sayfanın sağ alt köşesine "37 / 412" biçiminde <b>sayfa
+            numarası</b> basılır, böylece kâğıt üzerinde de içindekilerden evrak
+            bulunur. Aynı içerik olduğu için çıkarılan evraklar içindekilerde yine
+            listelenir ve içeriği taşıyan evrağın sayfasını gösterir.</dd>
+
+        <dt>Yazdırma sırası</dt>
+        <dd><b>En eskiden en yeniye:</b> ekrandan okumak ve PDF saklamak için.
+            <b>En yeniden en eskiye:</b> fiziki dosya için — kâğıtları klasöre
+            olduğu gibi koyduğunuzda en eski evrak altta kalır.</dd>
+
+        <dt>Son sayfada birkaç satır kalıyorsa sığdır</dt>
+        <dd>Bazı evraklar son sayfalarına yalnızca imza bloğunu taşırır. Bu seçenek
+            açıkken satır aralığı ve üst boşluk bir miktar daraltılıp evrak bir
+            önceki sayfaya sığdırılır. Metne dokunulmaz ve bu, yalnızca gerçekten
+            bir sayfa kazandırdığında yapılır.</dd>
+
+        <dt>Tek zip dosyası olarak indir</dt>
+        <dd>Tarayıcı her evrak için ayrı ayrı sorduğunda veya evrakları tek parça
+            taşımak istediğinizde kullanışlıdır.</dd>
+
+        <dt>İndirirken klasöre Excel dizini ekle</dt>
+        <dd>Klasörün en başına <b>000_Evrak Dizini.xlsx</b> konur. Dosyanın bütün
+            evrakları sıra numarası, tarihi, türü, açıklaması, geldiği dosya ve
+            durumuyla listelenir: indirildi, önceki indirmede alındı, aynı içerik
+            (hangi evrakla), alınamadı (sebebiyle) ya da seçilmedi. Excel'de türe,
+            tarihe veya duruma göre süzebilirsiniz; <b>dosya adına tıklayınca evrak
+            açılır</b>. Her indirmede yeniden yazılır, kaldığı yerden devam eden
+            indirmelerde de tek ve güncel bir dizin kalır.</dd>
+
+        <dt>İndirilemeyen evrak olduğunda bildir</dt>
+        <dd>Uzun indirmelerde panele bakmadan haberdar olmak için.</dd>
+
+        <dt>UYAP "erişiminiz durduruldu" yanıtı verince bir süre bekle</dt>
+        <dd>Varsayılan olarak açıktır. UYAP güvenlik engeli sayfasıyla yanıt verirse
+            eklenti işi hemen keser, yeni bir toplu işlem için en az 15 dakika bekler
+            (üst üste gelen engellerde daha uzun) ve sonraki işlerde daha yavaş
+            çalışır. Bekleme sürerken İndir, Yazdır ya da İçerikleri Tara'ya
+            bastığınızda çıkan <b>Beklemeyi Kaldır</b> düğmesi beklemeyi hemen
+            kaldırır. Kapalıyken eklenti hiçbir işte (duruşma sorgusu dahil)
+            kendiliğinden durmaz, beklemez ve yavaşlamaz: UYAP'ın vermediği evrak
+            sunucunun kendi yanıtıyla işaretlenir, işlem sürer. Kapatınca süren bir
+            bekleme de hemen kalkar. Açıkken de eklenti durduğunda UYAP'ın gönderdiği
+            metni mesajın altında aynen gösterir.</dd>
+      </dl>
+
+      <h2>Yazdırma çıktısı hakkında</h2>
+      <ul>
+        <li>Çıktının <b>her sayfası</b> üstte evrağın künyesini taşır: sıra
+            numarası, tarihi, adı, geldiği dosya ve varsa ek sayısı. Ekleri
+            indirmeden çıktı aldıysanız "<b>3 ek (çıktıya eklenmedi)</b>" diye
+            yazar; bir kısmını aldıysanız kaç tanesinin eksik olduğunu belirtir.
+            Böylece elinizdeki tomar eksiksiz sanılmaz. Taranmış ve PDF olarak
+            gelen evraklarda da bu künye vardır.</li>
+        <li>Desteklenen biçimler: <b>UDF, PDF, TIFF, PNG, JPEG, HTML, XLSX, DOCX,
+            EML</b> ve düz metin. <b>.eyp paketleri</b> açılıp içindeki evraklar
+            sırayla eklenir; imza ve manifest dosyaları atlanır. Bunların dışındaki
+            bir biçim çıkarsa yerine kırmızı uyarı sayfası konur.</li>
+        <li>Portalın HTML olarak ürettiği evraklar (vekalet pulu makbuzu, KEP
+            iletisi, bankalardan gelen cevaplar) metne çevrilerek çıktıya eklenir.</li>
+        <li><b>.xlsx</b> elektronik tablolar sütunlarıyla yazdırılır. Sayfaya
+            sığmayan geniş tablolar yatay sayfaya geçer; hâlâ sığmıyorsa sütunlar
+            öbeklere ayrılıp alt alta basılır ve her öbekte ilk sütun tekrar
+            edilir, böylece satır takip edilebilir. Az satırlı geniş tablolarda
+            ise her satır "alan: değer" bloğuna dönüşür. Çok uzun tablolarda ilk
+            4000 satır yazdırılır ve kaç satır olduğu sonda belirtilir; tamamı
+            indirilen özgün dosyada kalır.</li>
+        <li><b>.docx</b> belgeler, <b>.eml</b> KEP iletileri (gönderen, alıcı, konu,
+            tarih ve mesaj metni) ve düz metin dosyaları da çıktıya eklenir.</li>
+        <li>Bir evrak içeriğiyle eklenemezse yerine <b>kırmızı bir uyarı sayfası</b>
+            konur: sıra numarasını, tarihini, biçimini ve sebebini yazar. Evrak
+            gerekliyse portaldan tek tek indirip aynı numaralı sıraya yerleştirin;
+            kronoloji bozulmaz. Hiçbir evrak sessizce atlanmaz.</li>
+        <li>Sıra numaraları her zaman kronolojiktir: <b>001 daima en eski
+            evraktır</b>, yazdırma sırası ters çevrilse bile.</li>
+        <li>UDF evrakların PDF çıktısı <b>okunabilir bir surettir</b>; elektronik
+            imza PDF'e aktarılamaz. Aslın gerektiği yerlerde UDF dosyasının kendisi
+            kullanılmalıdır.</li>
+      </ul>
+
+      <h2>İşler beklendiği gibi gitmezse</h2>
+      <ul>
+        <li>Bir evrak alınamazsa eklenti birkaç farklı istek biçimi dener; bunlardan
+            biri de <b>portalın kendi indirme isteğidir</b>. Bu yüzden alınamayan
+            bir evrağı bir kez portalda elle açmak, sonraki denemede eklentinin de
+            alabilmesini sağlayabilir.</li>
+        <li><b>"Vekil kaydınız bulunmamaktadır"</b> yanıtını alırsanız, o evrakların
+            hangi dosyadan geldiğine bakın — genellikle bağlı bir talimat veya
+            soruşturma dosyasıdır. Bir tanesini portalda elle açmayı deneyin:
+            portalda da açılmıyorsa vekil kaydınız o dosyaya işlenmemiştir ve
+            ilgili yargı biriminin kaydı yapması gerekir. Portalda açılıyor ama
+            burada alınamıyorsa bu bir eklenti hatasıdır; <b>F12 → Konsol</b>'daki
+            "[UYAP Arşiv] alınamadı" kayıtlarıyla bildirin.</li>
+        <li>Diğer sebeplerde panel sunucunun kendi yanıtını yazar. Aynı sebep
+            bütün evraklarda tekrarlanıyorsa bir kez, dosyanın tamamı için
+            gösterilir.</li>
+        <li>Tarayıcı her indirmede "nereye kaydedilsin" diye soruyorsa
+            <b>Ayarlar</b>'dan zip seçeneğini işaretleyin ya da Chrome'un
+            <i>chrome://settings/downloads</i> sayfasından bu soruyu kapatın.</li>
+        <li>Oturum uzun süre açık kalırsa portal evrak vermeyi kesebilir; panel
+            durur ve yeniden listelemenizi ister.</li>
+        <li><b>Evrakların çoğu alınamıyorsa</b> sorun tek tek evraklarda değildir.
+            Panel bunu fark edip uyarır. Sırayla deneyin: UYAP'tan çıkıp yeniden
+            girin ve dosyayı yeniden listeleyin; sürerse bir süre bekleyip tekrar
+            deneyin, portal yoğun olabilir; bu sırada daha az evrak seçmek de
+            yardımcı olur. Eklenti bu durumda kendini yavaşlatır, ama portal
+            toparlanana kadar bazı evraklar gelmeyebilir.</li>
+        <li>Evrakları indirdikten sonra aynı seçimi yazdırırsanız ikinci işlem çok
+            daha hızlıdır: evraklar aynı listeleme boyunca bellekte tutulur.</li>
+        <li><b>Yazdırma neden sürüyor?</b> Bittiğinde panel toplam süreyi ve bunun
+            ne kadarının evrakları UYAP'tan almak olduğunu yazar. Çoğu zaman sürenin
+            neredeyse tamamı budur: evraklar ortak kullanılan portalı yormamak ve
+            erişiminizin durdurulmaması için bilerek yavaş, tek tek ve birkaç saniye arayla (dakikada yaklaşık 16 evrak) alınır.
+            Taranmış evrakların çözülmesi ve aynı içerik denetimi evraklar inerken
+            yapılır; sondaki birleştirme genellikle birkaç saniye sürer.</li>
+        <li><b>Hızlı giriş bölümü görünmüyorsa:</b> bölüm sağ alttaki panelin
+            içindedir; panel kapalıysa <b>UYAP Dosyalama ve Evrak Asistanı</b> düğmesiyle açın. Bölümü
+            "Gösterme" ile gizlediyseniz bu penceredeki <b>Kur</b>'dan bilgilerinizi
+            kaydettiğinizde geri gelir. "Erişim izni yok" diyorsa <b>Değiştir</b> →
+            <b>Kaydet</b>'e basıp Chrome'un sorduğu izni verin.</li>
+        <li><b>e-Devlet formu doldurulmadıysa</b> ya da <b>İmzala</b>'ya basılmadıysa,
+            sayfanın üstündeki notu okuyun. Form, panelden <b>Giriş Yap</b>'a
+            bastıktan sonraki 90 saniye içinde doldurulur; süre geçtiyse UYAP'a dönüp
+            yeniden basın. Eksik kalan adımı elle tamamlayabilirsiniz; bilgileriniz
+            formda durur.</li>
+        <li><b>"Güvenlik sistemlerimiz … erişiminiz geçici olarak durdurulmuştur"</b>:
+            UYAP kısa sürede çok sayıda istek geldiğini düşünüp erişiminizi bir süre
+            durdurmuştur. Eklenti bu yanıtı görür görmez bütün istekleri keser,
+            sonraki işlerde kendini yavaşlatır (engelsiz işlerden sonra yeniden
+            hızlanır),
+            sayfayı evrak diye kaydetmez ve <b>15 dakika</b> yeni bir toplu işlem
+            başlatmaz; panel kalan süreyi yazar. Engel kalkmadan yeniden denenip yine
+            gelirse bekleme 1 saate, sonra 4 saate (en çok 12 saat) uzar; bu durumda
+            önce portalda bir evrağı elle açabildiğinizi kontrol edin, açılmıyorsa
+            UYAP destek hattını (444 8927) arayın. Bu sürede portalı elle
+            kullanabilirsiniz; açılmazsa UYAP'tan çıkıp yeniden girin. Tekrar
+            denerken daha az evrak seçin: aynı listelemede alınmış evraklar yeniden
+            istenmez, indirmede <b>Sadece İndirilmemişler</b> kaldığınız yerden
+            sürdürür.</li>
+        <li><b>Bekleme sizi kilitliyorsa.</b> Panel "erişiminiz durduruldu" diye
+            bekletir ama UYAP aslında evrak veriyorsa (örneğin dosya listelenebiliyorsa),
+            <b>Beklemeyi Kaldır</b> düğmesiyle hemen yeniden deneyebilir ya da
+            <b>Ayarlar</b>'dan "UYAP erişiminiz durduruldu yanıtı verince bir süre bekle"
+            seçeneğini kapatabilirsiniz. Bu seçenek kapalıyken eklenti kendiliğinden
+            durmaz ve beklemez; bir evrak verilmezse yalnızca o evrak sunucunun kendi
+            yanıtıyla işaretlenir, işlem sürer.</li>
+        <li><b>"Duruşmalar alınamadı"</b> görürseniz oturumunuz düşmüş olabilir:
+            UYAP'tan çıkıp yeniden girin. Sürerse ana sayfayı bir kez açın; panel
+            portalın kendi duruşma sorgusunu görüp onu kullanır.</li>
+        <li>Eklenti güncellendiyse açık UYAP sekmesini <b>Ctrl + F5</b> ile
+            yenileyin. Paneli kapatırsanız sağ altta küçük bir <b>UYAP Dosyalama ve Evrak Asistanı</b>
+            düğmesi kalır, ona basınca geri açılır.</li>
+      </ul>
+
+      <p class="imza">
+        <b>Av. Mert Bayur</b> tarafından geliştirilmiştir.<br>
+        Açık kaynaklıdır (MIT). <span class="surum" id="surum"></span>
+      </p>
+    </section>
+  </div>
+
+</main>
+
+<script src="popup.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,562 @@
+<!doctype html>
+<!--
+  Scenario for tools/test-panel.mjs — run that, not this page.
+
+  A fake portal (portalFetch, getRequests), a fake chrome.storage that survives
+  "page reloads" (each mountPanel() is one visit), and the real panel.js. All
+  data here is invented: no client document ever belongs in this file.
+-->
+<html lang="tr"><head><meta charset="utf-8"><title>UYAP Arşiv panel testi</title></head>
+<body>
+<!-- Decoy first: the file list behind the overlay. Then the real heading. -->
+<div>2025/888 Örnekşehir 4. Asliye Hukuk Mahkemesi - Hukuk Dava Dosyası</div>
+<div>2026/1234 Örnekköy 3. Asliye Ceza Mahkemesi - Ceza Dava Dosyası</div>
+<pre id="sonuc">başladı</pre>
+<script>
+  const yaz = (m) => (document.getElementById('sonuc').textContent += '\n' + m);
+  window.addEventListener('error', (e) => yaz('HATA OLAYI ' + e.message));
+  window.addEventListener('unhandledrejection', (e) => yaz('REJECT ' + (e.reason?.stack || e.reason)));
+</script>
+<script type="module">
+const KOK = location.origin + '/';
+const log = [];
+const goster = () => (document.getElementById('sonuc').textContent = log.join('\n'));
+const ok = (ad, kosul, ek = '') => { log.push(`${kosul ? 'ok  ' : 'HATA'}  ${ad}${ek ? '  → ' + ek : ''}`); goster(); };
+const bekle = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const depo = {};
+window.chrome = {
+  storage: { local: {
+    get: async (k) => { const ks = k == null ? Object.keys(depo) : Array.isArray(k) ? k : [k]; const o = {}; for (const x of ks) if (x in depo) o[x] = structuredClone(depo[x]); return o; },
+    set: async (o) => { Object.assign(depo, structuredClone(o)); },
+    remove: async (k) => { for (const x of [].concat(k)) delete depo[x]; }
+  } },
+  runtime: { getURL: (p) => KOK + p }
+};
+
+const kayit = (id, tur, tarih, no) => ({ evrakId: `"${id}"`, dosyaId: '"F"', tur, onaylandigiTarih: tarih, birimEvrakNo: no });
+let liste = [kayit('e1', 'Tensip Zaptı', '01/08/2026', 1), kayit('e2', 'Tebligat', '02/08/2026', 2)];
+const icerik = { e1: 'tek', e3: 'AYNI', e4: 'AYNI', e5: 'baska' };
+const kaydedilen = [];
+const kaydedilenBlob = new Map();
+// Section 9 turns one document into a colour PNG scan and keeps the last printout.
+let taramaKimligi = null;
+let taramaBaytlari = null;
+let sonCikti = null;
+// Section 10: one document answers with UYAP's security block instead.
+let engelKimligi = null;
+let engelKodlu = false;
+// Section 14: the list request itself answered with the block page.
+let listeEngelli = false;
+let belgeIstegi = 0;
+// Section 11: documents the portal refuses, and every document request with its time.
+let retKimlikleri = new Set();
+const istekKaydi = [];
+// Section 13: zips handed to the browser, by name.
+const zipler = [];
+const ENGEL_SAYFASI =
+  '<html><body><div class="msgbaslik">Uyarı</div><div>Güvenlik sistemlerimiz, erişiminizde insan kullanımına uygun ' +
+  'olmayan bir etkinlik örüntüsü tespit etmiştir. Bu nedenle erişiminiz geçici olarak durdurulmuştur.</div></body></html>';
+
+let kararBaytlari = null;
+async function kararPdf() {
+  if (kararBaytlari) return kararBaytlari;
+  const { PDFDocument, StandardFonts } = await import(KOK + 'vendor/pdf-lib.esm.min.js');
+  const d = await PDFDocument.create();
+  const f = await d.embedFont(StandardFonts.Helvetica);
+  const s = d.addPage();
+  s.drawText('Mahkememizce davacinin ihtiyati tedbir talebinin', { x: 50, y: 700, font: f, size: 12 });
+  s.drawText('kabulune karar verilmistir.', { x: 50, y: 684, font: f, size: 12 });
+  kararBaytlari = await d.save();
+  return kararBaytlari;
+}
+
+function ctxYap(preset) {
+  return {
+    preset,
+    portalFetch: async (req, asBlob) => {
+      if (!asBlob && listeEngelli) throw Object.assign(new Error('POST → 200'), { status: 200, govde: ENGEL_SAYFASI.replace(/<[^>]*>/g, ' ') });
+      if (!asBlob) return { tumEvraklar: { '2026/1234(Ceza Dava Dosyası)': structuredClone(liste) } };
+      const id = new URL(req.url).searchParams.get('evrakId').replace(/"/g, '');
+      belgeIstegi++;
+      istekKaydi.push({ id, t: Date.now() });
+      if (retKimlikleri.has(id)) {
+        return { blob: new Blob(['<html><body><div>İlgili dosyada vekil kaydınız bulunmamaktadır.</div></body></html>']), contentType: 'text/html; charset=UTF-8', contentDisposition: '' };
+      }
+      if (id === engelKimligi) {
+        if (engelKodlu) throw Object.assign(new Error('GET → 429'), { status: 429, govde: ENGEL_SAYFASI.replace(/<[^>]*>/g, ' ') });
+        return { blob: new Blob([ENGEL_SAYFASI]), contentType: 'text/html; charset=UTF-8', contentDisposition: '' };
+      }
+      if (id === 'e2') throw Object.assign(new Error('GET → 404'), { status: 404 });
+      // The one document with real text in it, for the content search.
+      if (id === 'e5') return { blob: new Blob([await kararPdf()]), contentType: 'application/pdf', contentDisposition: '' };
+      if (id === taramaKimligi) return { blob: new Blob([taramaBaytlari]), contentType: 'image/png', contentDisposition: '' };
+      await bekle(id === 'e3' ? 400 : 10); // e3 answers last: the copy (e4) must still not win
+      return { blob: new Blob([`%PDF-${icerik[id] ?? id}`]), contentType: 'application/pdf', contentDisposition: '' };
+    },
+    saveBlob: async (blob, path, secenek) => { kaydedilen.push(path); kaydedilenBlob.set(path, { blob, secenek }); return 1; },
+    bildir: async () => {},
+    yazdirmayaGonder: async (blob) => { sonCikti = blob; },
+    zipIndir: async (blob, ad) => { zipler.push(ad); },
+    getDosyaId: () => '"F"',
+    getRequests: async (p) => (p.includes('list') ? [{ url: 'https://avukat.uyap.gov.tr/list_dosya_evraklar.ajx', method: 'POST', body: '{"dosyaId":"F"}' }] : []),
+    savePreset: async () => {}
+  };
+}
+
+const meta = (p) => p.el.querySelector('[data-role="meta"]').textContent;
+const durum = (p) => p.el.querySelector('[data-role="status"]').textContent;
+async function listele(panel) {
+  panel.el.querySelector('[data-act="list"]').click();
+  for (let i = 0; i < 100 && !/evrak —|hata|bulunamadı/i.test(meta(panel)); i++) await bekle(20);
+}
+const rozetler = (p) => [...p.el.querySelectorAll('.ua-row')].filter((r) => r.querySelector('.ua-yeni')).map((r) => r.querySelector('.ua-row-ad').textContent.replace('YENİ', ''));
+const gozet = (q) => q.el.querySelector('[data-role="gecmis-ozet"]').textContent;
+const gdugme = (q) => q.el.querySelector('[data-act="gecmis-ac"]');
+const gsatirlar = (q) => [...q.el.querySelectorAll('[data-role="gecmis-liste"] li')].map((li) => li.textContent);
+
+/** The last index saved, read back with the extension's own spreadsheet reader. */
+async function dizinOku() {
+  const yol = [...kaydedilenBlob.keys()].filter((y) => y.endsWith('000_Evrak Dizini.xlsx')).pop();
+  if (!yol) return null;
+  const { blob, secenek } = kaydedilenBlob.get(yol);
+  const { zipIcerik } = await import(KOK + 'src/lib/udf.js');
+  const { xlsxSayfalar } = await import(KOK + 'src/lib/xlsx.js');
+  const [sayfa] = await xlsxSayfalar(await zipIcerik(await blob.arrayBuffer()));
+  // Rows from the fourth on are documents: [sıra, tarih, tür, evrak, açıklama, ana, kaynak, dosya adı, durum]
+  const evrak = (tur) => sayfa.satirlar.slice(3).find((s) => s[2] === tur) || [];
+  return { yol, secenek, sayfa, evrak };
+}
+
+async function indirVeBekle(p, turler) {
+  const uid = (tur) => p.state.evraklar.find((e) => e.tur === tur).uid;
+  p.state.secili = new Set(turler.map(uid));
+  p.el.querySelector('[data-act="download"]').disabled = false;
+  p.el.querySelector('[data-act="download"]').click();
+  for (let i = 0; i < 600 && !/^Bitti|iptal|Oturum/.test(durum(p)); i++) await bekle(50);
+  await bekle(100);
+}
+
+try {
+  const { mountPanel } = await import(KOK + 'src/content/panel.js');
+  const preset = await (await fetch(KOK + 'presets/avukatbeta.json')).json();
+
+  /* ------------------------------------------------ 1. first ever listing */
+  let p = mountPanel(ctxYap(structuredClone(preset)));
+  await bekle(50);
+  await listele(p);
+  ok('ilk listeleme: rozet yok', rozetler(p).length === 0);
+  ok('ilk listeleme: açıklama', /daha önce listeleme yapılmadı/.test(meta(p)), meta(p));
+  ok('geçmiş: hiç listeleme yok yazıyor', !p.el.querySelector('[data-role="gecmis"]').hidden && gozet(p) === 'Bu dosyada daha önce listeleme yapılmadı.', gozet(p));
+  ok('geçmiş: bu ziyaretin listelemesi listede, işaretli', gdugme(p).textContent === 'İşlem Geçmişi (1)' && /^Listeleme — .* · 2 evrak \(bu ziyarette\)$/.test(gsatirlar(p)[0]), gsatirlar(p).join(' | '));
+  ok('başlık: tuzak değil, doğru dosya', p.state.dosya.kok.startsWith('2026/1234 Örnekköy 3. Asliye Ceza'), p.state.dosya.kok);
+  p.el.remove();
+
+  /* ------------------------- 2. "reload": three documents arrived since */
+  liste = [...liste, kayit('e3', 'Bilirkişi Raporu', '03/08/2026', 3), kayit('e4', 'Müzekkere', '04/08/2026', 4), kayit('e5', 'Karar', '05/08/2026', 5)];
+  p = mountPanel(ctxYap(structuredClone(preset)));
+  await bekle(50);
+  await listele(p);
+  ok('yeni gelen 3 evrak rozetli', rozetler(p).length === 3, rozetler(p).join(', '));
+  ok('meta yeni sayısını yazıyor', /3 yeni evrak var \(son bakışınız: /.test(meta(p)), meta(p));
+  const dugme = p.el.querySelector('[data-act="sel-yeni"]');
+  ok('Sadece Yeniler düğmesi görünür', dugme && !dugme.hidden && dugme.textContent === 'Sadece Yeniler (3)', dugme?.textContent);
+
+  /* ------------------------- 3. listing again in the same page session */
+  await listele(p);
+  ok('aynı oturumda tekrar listeleme rozetleri silmedi', rozetler(p).length === 3);
+  ok('geçmiş: önceki listeleme özette', /^Son listeleme: \d\d\.\d\d\.\d{4} \d\d:\d\d · 2 evrak$/.test(gozet(p)), gozet(p));
+  ok('geçmiş: art arda tekrar listeleme ayrı kayıt sayılmadı', gdugme(p).textContent === 'İşlem Geçmişi (2)', gdugme(p).textContent);
+  gdugme(p).click();
+  ok('geçmiş: açılınca liste görünüyor', !p.el.querySelector('[data-role="gecmis-liste"]').hidden && gsatirlar(p).length === 2, gsatirlar(p).join(' | '));
+
+  p.el.querySelector('[data-act="sel-yeni"]')?.click();
+  const secili = [...p.state.secili].map((u) => p.state.evraklar.find((e) => e.uid === u).tur);
+  ok('Sadece Yeniler yalnızca yenileri seçti', secili.join(',') === 'Bilirkişi Raporu,Müzekkere,Karar', secili.join(','));
+
+  /* ---- 4. download: gap in selection, a failure, a copy that finishes first */
+  // e5 is left out and e2 fails for good: positions in the listing and in the
+  // selection differ, which is what used to hang the run.
+  const uid = (tur) => p.state.evraklar.find((e) => e.tur === tur).uid;
+  p.state.secili = new Set([uid('Tensip Zaptı'), uid('Tebligat'), uid('Bilirkişi Raporu'), uid('Müzekkere')]);
+  const bas = Date.now();
+  p.el.querySelector('[data-act="download"]').disabled = false;
+  p.el.querySelector('[data-act="download"]').click();
+  for (let i = 0; i < 600 && !/^Bitti|iptal|Oturum/.test(durum(p)); i++) await bekle(50);
+  await bekle(100);
+
+  const evrakYollari = kaydedilen.filter((y) => !/Dizin/.test(y));
+  ok('indirme takılmadan bitti', /^Bitti/.test(durum(p)), `${durum(p)} (${Date.now() - bas} ms)`);
+  ok('kopya: ilk geçen (e3) indirildi, sonraki (e4) atlandı',
+     evrakYollari.some((y) => /Bilirkişi Raporu/.test(y)) && !evrakYollari.some((y) => /Müzekkere/.test(y)), evrakYollari.join(' | '));
+  ok('klasör doğru dosyanın adını taşıyor', kaydedilen.length > 0 && kaydedilen.every((y) => y.includes('2026-1234 Örnekköy 3. Asliye Ceza')), kaydedilen[0]);
+  ok('özet: 2 indi, 1 kopya, 1 hata', /2 evrak indirildi, 1 tanesi aynı içerikte.*1 tanesi alınamadı/.test(durum(p)), durum(p));
+  ok('geçmiş: indirme en üstte, hemen görünüyor', /^İndirme — .* · 2 evrak indirildi · 1 kopya atlandı · 1 alınamadı \(bu ziyarette\)$/.test(gsatirlar(p)[0] || ''), gsatirlar(p)[0]);
+  ok('geçmiş: özet son indirmeyi gösteriyor', /\nSon indirme: .* · 2 evrak indirildi/.test(gozet(p)), gozet(p));
+
+  let dz = await dizinOku();
+  ok('dizin: klasörün başına yazıldı, eskisinin üzerine yazacak', dz && /2026-1234 Örnekköy 3\. Asliye Ceza.*\/000_Evrak Dizini\.xlsx$/.test(dz.yol) && dz.secenek?.uzerineYaz === true, dz?.yol);
+  ok('dizin: dosyanın bütün evrakları var', dz && dz.sayfa.satirlar.length === 3 + 5, String(dz?.sayfa.satirlar.length));
+  ok('dizin: indirilen evrak adı ve durumu', dz?.evrak('Tensip Zaptı')[7] === '001_2026-08-01_Tensip Zaptı.pdf' && dz?.evrak('Tensip Zaptı')[8] === 'İndirildi', dz?.evrak('Tensip Zaptı').join(' | '));
+  ok('dizin: alınamayan sebebiyle', dz?.evrak('Tebligat')[8] === 'Alınamadı: GET → 404', dz?.evrak('Tebligat')[8]);
+  ok('dizin: kopya asıl evrağı gösteriyor', /^003_.*Bilirkişi Raporu\.pdf$/.test(dz?.evrak('Müzekkere')[7] || '') && dz?.evrak('Müzekkere')[8] === 'Aynı içerik, ayrıca indirilmedi', dz?.evrak('Müzekkere').join(' | '));
+  ok('dizin: seçilmeyen belirtiliyor', dz?.evrak('Karar')[8] === 'Seçilmedi', dz?.evrak('Karar')[8]);
+
+  /* --------------------------- 5. print: recorded once it is ready */
+  p.state.secili = new Set([uid('Tensip Zaptı'), uid('Karar')]);
+  // Every status the run passes through, and whether it still counted as running then.
+  const gorulenDurumlar = [];
+  const yazdirDugmesi = p.el.querySelector('[data-act="print"]');
+  const durumGozcusu = new MutationObserver(() => gorulenDurumlar.push({ metin: durum(p), kilitli: yazdirDugmesi.disabled }));
+  durumGozcusu.observe(p.el.querySelector('[data-role="status"]'), { childList: true, characterData: true, subtree: true });
+  yazdirDugmesi.click();
+  await bekle(0);
+  const nabizKutusu = p.el.querySelector('[data-role="nabiz"]');
+  ok('nabız: yazdırma başlayınca görünüyor', !nabizKutusu.hidden && /^Çalışıyor · \d+ sn/.test(nabizKutusu.textContent.trim()), nabizKutusu.textContent.trim());
+  for (let i = 0; i < 1200 && !/yazdırmaya hazır|yüklenemedi|hazırlanamadı/.test(durum(p) + meta(p)); i++) await bekle(50);
+  await bekle(100);
+  durumGozcusu.disconnect();
+  ok('yazdırma bitti', /yazdırmaya hazır/.test(durum(p)), durum(p).split('\n')[0]);
+  const yaziliyor = gorulenDurumlar.find((d) => /^PDF dosyası yazılıyor: \d+ sayfa/.test(d.metin));
+  ok('nabız: PDF yazılırken söylüyor ve iş sürüyor sayılıyor', Boolean(yaziliyor?.kilitli), gorulenDurumlar.map((d) => d.metin.split(':')[0]).join(' → '));
+  ok('nabız: iş bitince gizleniyor, düğmeler açılıyor', nabizKutusu.hidden && !yazdirDugmesi.disabled);
+  ok('geçmiş: yazdırma kaydedildi', /^Yazdırma — .* · 2 evrak, \d+ sayfa · 1 eklenemedi \(bu ziyarette\)$/.test(gsatirlar(p)[0] || ''), gsatirlar(p)[0]);
+  p.el.remove();
+
+  /* ------------------------------- 6. another visit: the whole history */
+  p = mountPanel(ctxYap(structuredClone(preset)));
+  await bekle(50);
+  await listele(p);
+  const s = gsatirlar(p);
+  ok('geçmiş: yeni ziyarette tüm işlemler, en yenisi üstte',
+     s.length === 5 && /^Listeleme .*\(bu ziyarette\)$/.test(s[0]) && /^Yazdırma/.test(s[1]) && /^İndirme/.test(s[2]) && /5 evrak · 3 yeni$/.test(s[3]) && /2 evrak$/.test(s[4]),
+     s.join(' | '));
+  ok('geçmiş: özet önceki ziyaret + son indirme + son yazdırma',
+     /^Son listeleme: .* · 5 evrak · 3 yeni\nSon indirme: .*\nSon yazdırma: .* · 2 evrak/.test(gozet(p)), gozet(p).replace(/\n/g, ' / '));
+
+  /* -------- 7. resuming on a later visit: one index for the whole folder */
+  await indirVeBekle(p, ['Karar']);
+  dz = await dizinOku();
+  ok('dizin: devam indirmesinde yeni evrak eklendi', dz?.evrak('Karar')[8] === 'İndirildi', dz?.evrak('Karar').join(' | '));
+  ok('dizin: önceki ziyarette inen evrak adıyla duruyor', dz?.evrak('Tensip Zaptı')[8] === 'Önceki indirmede alındı' && dz?.evrak('Tensip Zaptı')[7] === '001_2026-08-01_Tensip Zaptı.pdf', dz?.evrak('Tensip Zaptı').join(' | '));
+  ok('dizin: önceki kopya da asıl evrağı gösteriyor', dz?.evrak('Müzekkere')[8] === 'Aynı içerik (önceki indirmede)' && /^003_/.test(dz?.evrak('Müzekkere')[7] || ''), dz?.evrak('Müzekkere').join(' | '));
+
+  /* --------------------------------------- 8. searching inside documents */
+  const icDugme = p.el.querySelector('[data-act="icerik-tara"]');
+  ok('içerik: tarama düğmesi evrak sayısını söylüyor', icDugme && !icDugme.hidden && /İçerikleri Tara \(\d+ evrak\)/.test(icDugme.textContent), icDugme?.textContent);
+  icDugme.click();
+  for (let i = 0; i < 600 && !/evrak tarandı/.test(durum(p)); i++) await bekle(50);
+  ok('içerik: tarama bitti ve özetledi', /tarandı: 1 tanesinin içinde aranabiliyor.*okunamadı.*portaldan alınamadı/.test(durum(p)), durum(p));
+
+  const ara = async (metin) => {
+    const kutu = p.el.querySelector('[data-act="ara"]');
+    kutu.value = metin;
+    kutu.dispatchEvent(new Event('input', { bubbles: true }));
+    await bekle(400); // the box waits for typing to pause
+  };
+  const gorunenler = () => [...p.el.querySelectorAll('.ua-row:not(.is-elenen) .ua-row-ad')].map((x) => x.textContent.replace('YENİ', ''));
+
+  await ara('tedbir');
+  ok('içerik: evrak adında geçmeyen kelime içerikten bulundu', gorunenler().join(',') === 'Karar', gorunenler().join(','));
+  const vurgu = p.el.querySelector('.ua-row:not(.is-elenen) .ua-row-icerik');
+  ok('içerik: bulunduğu yer vurgulu gösteriliyor', vurgu?.querySelector('mark')?.textContent === 'tedbir' && /ihtiyati/.test(vurgu.textContent), vurgu?.textContent);
+  ok('içerik: seçim aramaya uydu', [...p.state.secili].length === 1, String(p.state.secili.size));
+
+  await ara('İHTİYATİ kabulüne');
+  ok('içerik: Türkçe harf ve büyük harf farkı, birden çok kelime', gorunenler().join(',') === 'Karar', gorunenler().join(','));
+  await ara('tedbir tebligat');
+  ok('içerik: kelimelerin hepsi aranıyor', gorunenler().length === 0, gorunenler().join(','));
+  ok('içerik: arama kutusu içerikte aradığını söylüyor', /içinde ara/.test(p.el.querySelector('[data-act="ara"]').placeholder));
+  await ara('');
+
+  /* ------------------- 9. a scan prints through the fast path, fonts once */
+  const tuval = new OffscreenCanvas(300, 200);
+  const c2 = tuval.getContext('2d');
+  c2.fillStyle = 'rgba(200, 30, 30, 0.8)';
+  c2.fillRect(0, 0, 300, 200);
+  taramaBaytlari = new Uint8Array(await (await tuval.convertToBlob({ type: 'image/png' })).arrayBuffer());
+  taramaKimligi = 'e1';
+  p.state.onbellek = new Map();
+  p.state.onbellekBayt = 0;
+  p.state.secili = new Set([p.state.evraklar.find((e) => e.tur === 'Tensip Zaptı').uid]);
+  sonCikti = null;
+  p.el.querySelector('[data-act="print"]').click();
+  for (let i = 0; i < 1200 && !/yazdırmaya hazır|yüklenemedi|hazırlanamadı/.test(durum(p) + meta(p)); i++) await bekle(50);
+  await bekle(100);
+  ok('tarama: renkli PNG eklendi', /1 evrak, \d+ sayfa yazdırmaya hazır\./.test(durum(p)) && !/eklenemedi/.test(durum(p)), durum(p).split('\n')[0]);
+  const pdfMetin = sonCikti ? new TextDecoder('latin1').decode(await sonCikti.arrayBuffer()) : '';
+  ok('tarama: hızlı yoldan, saydamlık maskesi olmadan', /\/Subtype \/Image/.test(pdfMetin) && /\/ColorSpace \/DeviceRGB/.test(pdfMetin) && !/\/SMask/.test(pdfMetin));
+  const fontDosyalari = new Set([...pdfMetin.matchAll(/\/FontFile2 (\d+) 0 R/g)].map((m) => m[1]));
+  ok('çıktı: her yazı tipi bir kez', fontDosyalari.size >= 1 && fontDosyalari.size <= 2, String(fontDosyalari.size));
+  ok('çıktı: süre ve UYAP payı yazıyor', /Süre: \d+ sn, bunun \d+ sn kadarı evrakların UYAP'tan alınması\./.test(durum(p)), durum(p).split('\n').pop());
+
+  /* -------------------------- 10. UYAP's security block stops everything */
+  taramaKimligi = null;
+  engelKimligi = 'e1';
+  p.state.onbellek = new Map();
+  p.state.onbellekBayt = 0;
+  p.state.secili = new Set(p.state.evraklar.filter((e) => e.indirilebilir).map((e) => e.uid));
+  sonCikti = null;
+  const engelOncesi = belgeIstegi;
+  p.el.querySelector('[data-act="print"]').click();
+  // Wait for this run, not the previous one's last words: started, then finished.
+  for (let i = 0; i < 100 && !p.state.busy; i++) await bekle(20);
+  for (let i = 0; i < 2400 && p.state.busy; i++) await bekle(50);
+  await bekle(3000); // anything still queued would have started by now
+  const engelSatiri = p.el.querySelector(`.ua-row[data-id="${p.state.evraklar.find((e) => e.tur === 'Tensip Zaptı').uid}"]`);
+  ok('engel: yazdırma durdu, yarım belge oluşturulmadı', /güvenlik sistemi/.test(meta(p)) && sonCikti === null, meta(p).split('\n')[0]);
+  ok("engel: UYAP'ın kendi yanıtı mesajda alıntılanıyor", /UYAP'ın yanıtı: "[^"]*insan kullanımına uygun olmayan/.test(meta(p)), meta(p).split('\n').pop().slice(0, 90));
+  ok('engel: güvenlik sayfası evrak sayılmadı', !engelSatiri || engelSatiri.classList.contains('is-failed'));
+  ok('engel: engelden sonra istek atılmadı', belgeIstegi - engelOncesi === 1, String(belgeIstegi - engelOncesi));
+  ok('engel: zamanı kaydedildi', typeof depo.uyapEngeli === 'number' && Date.now() - depo.uyapEngeli < 60_000 && depo.uyapEngelSayisi === 1);
+  ok('engel: nabız ve düğmeler bıraktı', p.el.querySelector('[data-role="nabiz"]').hidden && !p.el.querySelector('[data-act="print"]').disabled);
+
+  const beklemeOncesi = belgeIstegi;
+  p.el.querySelector('[data-act="print"]').click();
+  await bekle(300);
+  p.el.querySelector('[data-act="download"]').click();
+  await bekle(300);
+  ok('engel: süre dolmadan yeni toplu işlem başlamıyor', belgeIstegi === beklemeOncesi && /\d+ dakika bekleyin/.test(meta(p)), meta(p).split('\n')[1]);
+
+  // The pause is over; this time the block comes as a 429 with the same words.
+  depo.uyapEngeli = Date.now() - 16 * 60_000;
+  engelKodlu = true;
+  const kayitOncesi = kaydedilen.length;
+  const kodluOncesi = belgeIstegi;
+  p.state.secili = new Set([p.state.evraklar.find((e) => e.tur === 'Tensip Zaptı').uid]);
+  p.el.querySelector('[data-act="download"]').click();
+  for (let i = 0; i < 1200 && !/indirme kesildi|^Bitti/.test(durum(p)); i++) await bekle(50);
+  ok('engel: hata koduyla gelen engel de tanınıyor, yeniden denenmiyor', /UYAP erişimi durdurduğu için indirme kesildi/.test(durum(p)) && belgeIstegi - kodluOncesi === 1, durum(p).split('\n')[0] + ' / istek ' + (belgeIstegi - kodluOncesi));
+  ok("engel: hata koduyla gelende de UYAP'ın yanıtı yazıyor", /UYAP'ın yanıtı: "[^"]*erişiminiz geçici olarak durdurulmuştur/.test(durum(p)), durum(p).slice(-90));
+  ok('engel: aynı gün ikinci engel üst üste sayılıyor', depo.uyapEngelSayisi === 2, String(depo.uyapEngelSayisi));
+  ok('engel: engel sayfası dosya olarak kaydedilmedi', !kaydedilen.slice(kayitOncesi).some((y) => !y.endsWith('.xlsx')), kaydedilen.slice(kayitOncesi).join(', '));
+  engelKimligi = null;
+
+  /* ------------ 10b. protection off: nothing is self-stopped, run continues */
+  depo.uyapEngeli = 0;
+  depo.uyapEngelSayisi = 0;
+  depo.istekYavaslatma = 1;
+  p.state.engelKorumasi = false;
+  engelKodlu = false;
+  engelKimligi = String(p.state.evraklar.find((e) => e.tur === "Tensip Zaptı").id).replace(/"/g, "");
+  const korumaOncesi = belgeIstegi;
+  const korumaKaydi = istekKaydi.length;
+  p.state.onbellek = new Map();
+  p.state.onbellekBayt = 0;
+  p.state.indirilen = new Set();
+  depo[p.state.gecmisAnahtari] = [];
+  p.state.secili = new Set(p.state.evraklar.filter((e) => e.indirilebilir).map((e) => e.uid));
+  p.el.querySelector("[data-act=\"download\"]").click();
+  for (let i = 0; i < 100 && !p.state.busy; i++) await bekle(20);
+  for (let i = 0; i < 2400 && p.state.busy; i++) await bekle(50);
+  ok("koruma kapalı: engel yanıtı gelse de işlem durmuyor", belgeIstegi - korumaOncesi >= 4 && !/güvenlik sistemi|erişimi durdurduğu/.test(durum(p)), durum(p).split("\n")[0] + " / istek " + (belgeIstegi - korumaOncesi));
+  const engelRow = p.el.querySelector(`.ua-row[data-id="${p.state.evraklar.find((e) => e.tur === "Tensip Zaptı").uid}"]`);
+  ok("koruma kapalı: engel yanıtı sunucu metniyle işaretli, bekleme kaydı yok", /is-failed/.test(engelRow?.className || "") && /Güvenlik sistemlerimiz/.test(engelRow?.querySelector("[data-role=\"state\"]")?.title || "") && !depo.uyapEngeli, engelRow?.querySelector("[data-role=\"state\"]")?.title?.slice(0, 50));
+  ok("koruma kapalı: diğer evraklar indi", (depo[p.state.gecmisAnahtari] || []).length >= 3, String((depo[p.state.gecmisAnahtari] || []).length));
+  const engelUid = p.state.evraklar.find((e) => e.tur === "Tensip Zaptı").uid;
+  const engelIstegi = istekKaydi.slice(korumaKaydi).filter((x) => x.id === engelKimligi).length;
+  ok(
+    "koruma kapalı: engel yanıtlı evrak tek istekte bırakılıyor, ret sayılmıyor (devamda yeniden istenir)",
+    engelIstegi === 1 && !p.state.reddedilenler.has(engelUid) && !p.state.kapaliKaynaklar.size,
+    "istek " + engelIstegi + " / reddedildi=" + p.state.reddedilenler.has(engelUid) + " / kapalı=" + p.state.kapaliKaynaklar.size
+  );
+
+  // Protection on again, and the "Beklemeyi Kaldır" button clears a waiting state at once.
+  p.state.engelKorumasi = true;
+  depo.uyapEngeli = Date.now();
+  depo.uyapEngelSayisi = 1;
+  depo.istekYavaslatma = 2;
+  engelKimligi = null;
+  const temizAt = belgeIstegi;
+  p.state.secili = new Set([p.state.evraklar.find((e) => e.tur === "Karar").uid]);
+  p.el.querySelector("[data-act=\"download\"]").click();
+  await bekle(300);
+  const engelKaldir = p.el.querySelector("[data-act=\"engel-kaldir\"]");
+  ok("koruma açık: beklemede Beklemeyi Kaldır düğmesi çıkıyor, istek atılmıyor", engelKaldir && !engelKaldir.hidden && belgeIstegi === temizAt, "gizli=" + engelKaldir?.hidden);
+  engelKaldir.click();
+  await bekle(200);
+  ok("koruma açık: Beklemeyi Kaldır kaydı siliyor", !("uyapEngeli" in depo) && !("istekYavaslatma" in depo) && engelKaldir.hidden, JSON.stringify(Object.keys(depo).filter((k) => k.startsWith("uyap") || k === "istekYavaslatma")));
+  depo.uyapEngeli = 0;
+  depo.uyapEngelSayisi = 0;
+  depo.istekYavaslatma = 1;
+
+  /* ------------- 11. as few requests as possible: a refusal is an answer */
+  depo.uyapEngeli = 0;
+  depo.istekYavaslatma = 1;
+  const kimlik = (tur) => p.state.evraklar.find((e) => e.tur === tur);
+  // The main file's way of asking is known by now: one request per refused
+  // document, and no retry.
+  retKimlikleri = new Set([kimlik('Bilirkişi Raporu').id.replace(/"/g, ''), kimlik('Müzekkere').id.replace(/"/g, '')]);
+  p.state.onbellek = new Map();
+  p.state.onbellekBayt = 0;
+  p.state.secili = new Set([kimlik('Bilirkişi Raporu').uid, kimlik('Müzekkere').uid]);
+  let ilkIstek = istekKaydi.length;
+  p.el.querySelector('[data-act="print"]').click();
+  for (let i = 0; i < 100 && !p.state.busy; i++) await bekle(20);
+  for (let i = 0; i < 2400 && p.state.busy; i++) await bekle(50);
+  let say = (id) => istekKaydi.slice(ilkIstek).filter((r) => r.id === id).length;
+  ok('az istek: öğrenilmiş dosyada reddedilen evrak tek istek, tekrar yok', [...retKimlikleri].every((id) => say(id) === 1), [...retKimlikleri].map(say).join(','));
+
+  // A fresh page knows nothing yet. Every document is refused: the first ones
+  // are tried each way, with a pause between tries; after two, the rest of the
+  // file is not asked for at all.
+  p.el.remove();
+  p = mountPanel(ctxYap(structuredClone(preset)));
+  await bekle(50);
+  await listele(p);
+  retKimlikleri = new Set(p.state.evraklar.map((e) => String(e.id).replace(/"/g, '')));
+  p.state.secili = new Set(p.state.evraklar.filter((e) => e.indirilebilir).map((e) => e.uid));
+  ilkIstek = istekKaydi.length;
+  p.el.querySelector('[data-act="print"]').click();
+  for (let i = 0; i < 100 && !p.state.busy; i++) await bekle(20);
+  for (let i = 0; i < 4000 && p.state.busy; i++) await bekle(50);
+  const istenen = [...retKimlikleri].map((id) => istekKaydi.slice(ilkIstek).filter((r) => r.id === id));
+  const hicIstenmeyen = istenen.filter((x) => x.length === 0).length;
+  ok('az istek: iki evrak tamamen reddedilince dosyanın kalanı istenmiyor', hicIstenmeyen >= 2, istenen.map((x) => x.length).join(','));
+  const araliklar = istenen.filter((x) => x.length > 1).flatMap((x) => x.slice(1).map((r, i) => r.t - x[i].t));
+  ok('az istek: bir evrağın denemeleri arasında bekleniyor', araliklar.length > 0 && Math.min(...araliklar) >= 1400, araliklar.join(','));
+  const atlanan = [...p.el.querySelectorAll('.ua-row.is-failed')].some((r) => /kalanları istenmedi/.test(r.querySelector('[data-role="state"]')?.title || ''));
+  ok('az istek: istenmeyen evrakın sebebi yazıyor', atlanan);
+  retKimlikleri = new Set();
+
+  /* ------------- 12. the extension reloaded under this tab: say "reload" */
+  const saklananDepo = window.chrome.storage;
+  delete window.chrome.storage;
+  p.el.querySelector('[data-act="list"]').click();
+  await bekle(50);
+  ok('bağlantı: eklenti yenilenince düğme sayfayı yenilemeyi söylüyor', /Sayfayı yenileyin \(F5\)/.test(meta(p)) && !/reading 'local'/.test(meta(p)), meta(p));
+  window.chrome.storage = saklananDepo;
+
+  /* ----------- 13. four speeds, and picking up where a stopped run left off */
+  p.el.remove();
+  p = mountPanel(ctxYap(structuredClone(preset)));
+  await bekle(50);
+  depo.istekYavaslatma = 1;
+  depo.uyapEngeli = 0;
+  depo.uyapEngelSayisi = 0;
+  engelKimligi = null;
+  engelKodlu = false;
+  await listele(p);
+  const calis = async (act) => {
+    p.el.querySelector(`[data-act="${act}"]`).click();
+    for (let i = 0; i < 100 && !p.state.busy; i++) await bekle(20);
+    for (let i = 0; i < 4000 && p.state.busy; i++) await bekle(50);
+  };
+  const id = (ev) => String(ev.id).replace(/"/g, '');
+  const tur = (t) => p.state.evraklar.find((e) => e.tur === t);
+  // One pace for everything: no speed to choose, one request at a time, 3 s or more apart.
+  ok('tempo: hız seçimi yok', !p.el.querySelector('[data-act="hiz"]'));
+  const aciklama = p.el.querySelector('[data-role="hiz-aciklama"]').textContent;
+  ok('tempo: tek tempo ve tahmini süre yazıyor', /tek tek.*dakikada yaklaşık 16 evrak.*Seçili \d+ evrak için yaklaşık/.test(aciklama), aciklama);
+  const araliklarOlc = async (act) => {
+    p.state.onbellek = new Map();
+    p.state.onbellekBayt = 0;
+    p.state.indirilen = new Set();
+    p.state.secili = new Set(['Tensip Zaptı', 'Bilirkişi Raporu', 'Karar'].map((t) => tur(t).uid));
+    const ilk = istekKaydi.length;
+    await calis(act);
+    const t = istekKaydi.slice(ilk).map((r) => r.t);
+    return t.slice(1).map((x, i) => x - t[i]);
+  };
+  let ar = await araliklarOlc('print');
+  ok('tempo: yazdırmada istekler tek tek, en az 3 sn arayla', ar.length === 2 && Math.min(...ar) >= 2900, ar.join(','));
+  ar = await araliklarOlc('download');
+  ok('tempo: indirmede istekler tek tek, en az 3 sn arayla', ar.length === 2 && Math.min(...ar) >= 2900, ar.join(','));
+
+  // A download stopped by a block on its fourth document.
+  const sirali = p.state.evraklar.filter((e) => e.indirilebilir);
+  const sifirla = () => {
+    p.state.onbellek = new Map();
+    p.state.onbellekBayt = 0;
+    p.state.indirilen = new Set();
+    depo[p.state.gecmisAnahtari] = [];
+  };
+  sifirla();
+  engelKimligi = id(sirali[3]);
+  p.state.secili = new Set(sirali.map((e) => e.uid));
+  await calis('download');
+  const inenler = new Set(depo[p.state.gecmisAnahtari] || []);
+  const yarimKutusu = () => p.el.querySelector('[data-role="yarim"]');
+  ok('devam: engelden önce inenler kayıtlı ve korunuyor', inenler.size >= 1 && /indi ve korunuyor/.test(durum(p)), durum(p).split('\n')[0]);
+  ok('devam: yarım kalan iş kaydedildi, düğme görünüyor', !yarimKutusu().hidden && depo[p.state.yarimAnahtari]?.tur === 'indirme' && /evrak kaldı/.test(yarimKutusu().textContent), yarimKutusu().textContent.trim().slice(0, 90));
+
+  const devamDugmesi = () => p.el.querySelector('[data-act="devam"]');
+  ok('devam: UYAP beklemesi sürerken düğme kapalı ve ne zaman açılacağını söylüyor', devamDugmesi().disabled && /\(\d+ dk sonra\)/.test(devamDugmesi().textContent) && /kendiliğinden açılır/.test(yarimKutusu().textContent), devamDugmesi().textContent);
+  ok('devam: evraklar gelirken gelen engelde hız düşürme öneriliyor', depo.uyapEngelIlerledi === true);
+  depo.uyapEngeli = Date.now() - 3 * 3_600_000;
+  engelKimligi = null;
+  for (let i = 0; i < 80 && devamDugmesi().disabled; i++) await bekle(500);
+  ok('devam: bekleme bitince düğme kendiliğinden açılıyor', !devamDugmesi().disabled && devamDugmesi().textContent === 'Kaldığı Yerden Devam Et', devamDugmesi().textContent);
+  let ilkDevam = istekKaydi.length;
+  p.el.querySelector('[data-act="devam"]').click();
+  for (let i = 0; i < 100 && !p.state.busy; i++) await bekle(20);
+  for (let i = 0; i < 4000 && p.state.busy; i++) await bekle(50);
+  let istenenler = istekKaydi.slice(ilkDevam).map((r) => r.id);
+  ok('devam: yalnızca kalanlar istendi, inmişler istenmedi', istenenler.includes(id(sirali[3])) && !sirali.some((e) => inenler.has(e.uid) && istenenler.includes(id(e))), istenenler.join(','));
+  ok('devam: iş bitince kayıt ve düğme kalkıyor', yarimKutusu().hidden && !(p.state.yarimAnahtari in depo), yarimKutusu().textContent.trim().slice(0, 60));
+
+  // In zip mode a stopped run still delivers its zip, and what is in it counts.
+  sifirla();
+  p.state.zipModu = true;
+  engelKimligi = id(sirali[3]);
+  p.state.secili = new Set(sirali.map((e) => e.uid));
+  await calis('download');
+  const zipteki = depo[p.state.gecmisAnahtari] || [];
+  ok('zip: yarım kalan zip de teslim ediliyor, içindekiler inmiş sayılıyor', /\(yarım\)\.zip$/.test(zipler.at(-1) || '') && zipteki.length >= 1, (zipler.at(-1) || '') + ' / ' + zipteki.length);
+  p.state.zipModu = false;
+  engelKimligi = null;
+  await yarimKaydetTest();
+
+  // A print stopped by a block: what arrived waits in memory.
+  depo.uyapEngeli = 0;
+  depo.uyapEngelSayisi = 0;
+  sifirla();
+  engelKimligi = id(sirali[3]);
+  p.state.secili = new Set(sirali.map((e) => e.uid));
+  await calis('print');
+  const bellekte = sirali.filter((e) => p.state.onbellek.has(e.uid));
+  ok('devam: yarım kalan yazdırma kaydedildi', depo[p.state.yarimAnahtari]?.tur === 'yazdirma' && bellekte.length >= 1 && /bu sayfada bekliyor/.test(yarimKutusu().textContent), yarimKutusu().textContent.trim().slice(0, 90));
+  engelKimligi = null;
+  sonCikti = null;
+  const devamKapaliydi = devamDugmesi().disabled;
+  p.el.querySelector('[data-act="engel-kaldir"]').click();
+  await bekle(200);
+  ok('devam: Beklemeyi Kaldır devam düğmesini hemen açıyor', devamKapaliydi && !devamDugmesi().disabled && devamDugmesi().textContent === 'Kaldığı Yerden Devam Et', 'önce kapalı=' + devamKapaliydi + ' / ' + devamDugmesi().textContent);
+  for (let i = 0; i < 80 && devamDugmesi().disabled; i++) await bekle(500);
+  ilkDevam = istekKaydi.length;
+  p.el.querySelector('[data-act="devam"]').click();
+  for (let i = 0; i < 100 && !p.state.busy; i++) await bekle(20);
+  for (let i = 0; i < 4000 && p.state.busy; i++) await bekle(50);
+  istenenler = istekKaydi.slice(ilkDevam).map((r) => r.id);
+  ok('devam: yazdırmada alınmış evraklar yeniden istenmedi', !bellekte.some((e) => istenenler.includes(id(e))) && istenenler.includes(id(sirali[3])), istenenler.join(','));
+  ok('devam: yazdırma tamamlandı, kayıt kalktı', sonCikti !== null && /yazdırmaya hazır/.test(durum(p)) && !(p.state.yarimAnahtari in depo), durum(p).split('\n')[0]);
+
+  /* ------- 14. a block on the listing itself is recognised, not swallowed */
+  p.el.remove();
+  depo.uyapEngeli = 0;
+  depo.uyapEngelSayisi = 0;
+  depo.istekYavaslatma = 1;
+  listeEngelli = true;
+  p = mountPanel(ctxYap(structuredClone(preset)));
+  await bekle(50);
+  await listele(p);
+  ok("liste engeli: koruma açıkken tanınıyor, bekleme kaydediliyor, UYAP'ın yanıtı yazıyor", /güvenlik sistemi/.test(meta(p)) && /UYAP'ın yanıtı: "/.test(meta(p)) && depo.uyapEngeli > 0, meta(p).split('\n')[0]);
+  depo.uyapEngeli = 0;
+  depo.uyapEngelSayisi = 0;
+  p.state.engelKorumasi = false;
+  await listele(p);
+  ok("liste engeli: koruma kapalıyken bekleme kaydı yok, UYAP'ın yanıtı yazıyor", /evrak listesi isteğine/.test(meta(p)) && /UYAP'ın yanıtı: "/.test(meta(p)) && !depo.uyapEngeli, meta(p).split('\n')[0]);
+  listeEngelli = false;
+
+  async function yarimKaydetTest() {
+    // Leave no stopped run behind for the next part of the scenario.
+    p.el.querySelector('[data-act="yarim-kapat"]')?.click();
+    await bekle(30);
+  }
+} catch (err) {
+  log.push('İSTİSNA  ' + (err?.stack || err));
+}
+log.push('BİTTİ');
+goster();
+</script>
+</body></html>

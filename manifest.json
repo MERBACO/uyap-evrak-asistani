@@ -1,0 +1,81 @@
+{
+  "manifest_version": 3,
+  "name": "UYAP Dosyalama ve Evrak Asistanı",
+  "short_name": "UYAP Asistanı",
+  "version": "2.16.0",
+  "description": "UYAP Avukat Portal için: evrakları kronolojik sırayla indirir ve yazdırır, duruşmaları listeler, mobil imzayla hızlı giriş yapar.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "downloads",
+    "storage",
+    "unlimitedStorage",
+    "notifications",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://avukat.uyap.gov.tr/*",
+    "https://avukatbeta.uyap.gov.tr/*"
+  ],
+  "optional_host_permissions": [
+    "https://giris.turkiye.gov.tr/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://avukat.uyap.gov.tr/*",
+        "https://avukatbeta.uyap.gov.tr/*"
+      ],
+      "js": [
+        "src/inject/net-hook.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://avukat.uyap.gov.tr/*",
+        "https://avukatbeta.uyap.gov.tr/*"
+      ],
+      "js": [
+        "src/content/bridge.js"
+      ],
+      "css": [
+        "src/content/panel.css"
+      ],
+      "world": "ISOLATED",
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "presets/*.json",
+        "src/content/panel.js",
+        "src/content/hizli-giris.js",
+        "src/content/durusmalar.js",
+        "src/lib/*.js",
+        "fonts/*",
+        "vendor/*"
+      ],
+      "matches": [
+        "https://avukat.uyap.gov.tr/*",
+        "https://avukatbeta.uyap.gov.tr/*"
+      ]
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "UYAP Dosyalama ve Evrak Asistanı"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

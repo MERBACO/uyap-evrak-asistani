@@ -1,0 +1,50 @@
+UYAP Dosyalama ve Evrak Asistanı
+Telif hakkı (c) 2026 Av. Mert Bayur. Tüm hakları saklıdır.
+
+Bu yazılımın kaynak kodu yalnızca incelenebilmesi ve ne yaptığının denetlenebilmesi
+amacıyla herkese açık tutulmaktadır. Telif hakkı sahibinin yazılı izni olmadan
+yazılımın tamamı ya da bir kısmı kopyalanamaz, çoğaltılamaz, değiştirilemez,
+uyarlanamaz, dağıtılamaz, alt lisanslanamaz, satılamaz, kiralanamaz ya da başka bir
+ürüne dahil edilemez.
+
+Yazılımı resmî dağıtım kanalından (Chrome Web Store) edinen kullanıcı, onu kendi
+işinde, olduğu gibi kullanabilir.
+
+Yazılım "OLDUĞU GİBİ" sunulur; açık ya da örtülü hiçbir garanti verilmez. Telif hakkı
+sahibi, yazılımın kullanımından doğan hiçbir zarardan sorumlu tutulamaz.
+
+Yazılım Adalet Bakanlığı, UYAP veya e-Devlet ile bağlantılı değildir.
+
+Birlikte gelen üçüncü taraf bileşenler bu lisansın kapsamında değildir ve kendi
+lisanslarına tabidir:
+  - vendor/pdf-lib.esm.min.js — MIT (vendor/LICENSE-pdf-lib.md)
+  - vendor/utif.js — MIT (vendor/LICENSE-utif.txt)
+  - fonts/ — Liberation Serif, SIL Open Font License (fonts/LICENSE-LiberationSerif.txt)
+
+İzin talepleri: https://github.com/MERBACO/uyap-evrak-asistani/issues
+
+------------------------------------------------------------------------------
+
+UYAP Dosyalama ve Evrak Asistanı
+Copyright (c) 2026 Av. Mert Bayur. All rights reserved.
+
+The source code of this software is made publicly visible solely so that it can be
+read and its behaviour verified. Without the copyright holder's written permission,
+no part of the software may be copied, reproduced, modified, adapted, distributed,
+sublicensed, sold, rented or incorporated into another product.
+
+A user who obtains the software from its official distribution channel (the Chrome
+Web Store) may use it, as is, in their own work.
+
+The software is provided "AS IS", without warranty of any kind, express or implied.
+The copyright holder shall not be liable for any damages arising from its use.
+
+The software is not affiliated with the Turkish Ministry of Justice, UYAP or e-Devlet.
+
+Bundled third-party components are not covered by this licence and remain under
+their own licences:
+  - vendor/pdf-lib.esm.min.js — MIT (vendor/LICENSE-pdf-lib.md)
+  - vendor/utif.js — MIT (vendor/LICENSE-utif.txt)
+  - fonts/ — Liberation Serif, SIL Open Font License (fonts/LICENSE-LiberationSerif.txt)
+
+Permission requests: https://github.com/MERBACO/uyap-evrak-asistani/issues

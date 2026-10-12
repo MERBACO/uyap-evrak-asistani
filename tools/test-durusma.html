@@ -1,0 +1,210 @@
+<!doctype html>
+<!--
+  Scenario for tools/test-panel.mjs — run that, not this page.
+
+  The hearing list: the section in the panel (src/content/durusmalar.js) against
+  a fake portal, and the table page (src/popup/durusmalar.html) on what it stored.
+  All names and case numbers here are invented.
+-->
+<html lang="tr"><head><meta charset="utf-8"><title>UYAP Yardımcısı duruşma testi</title>
+<link rel="stylesheet" href="/src/content/panel.css"></head>
+<body>
+<div id="uyap"></div>
+<div id="ua-panel"><div class="ua-body"><div class="ua-bar" id="listele">Evrakları Listele</div></div></div>
+<div id="tablo-sayfasi"></div>
+<pre id="sonuc">başladı</pre>
+<script>
+  const yaz = (m) => (document.getElementById('sonuc').textContent += '\n' + m);
+  window.addEventListener('error', (e) => yaz('HATA OLAYI ' + e.message));
+  window.addEventListener('unhandledrejection', (e) => yaz('REJECT ' + (e.reason?.stack || e.reason)));
+</script>
+<script type="module">
+import { durusmalariKur } from '/src/content/durusmalar.js';
+import { sorguAraligi } from '/src/lib/durusma.js';
+
+const log = [];
+const goster = () => (document.getElementById('sonuc').textContent = log.join('\n'));
+const ok = (ad, kosul, ek = '') => { log.push(`${kosul ? 'ok  ' : 'HATA'}  ${ad}${ek ? '  → ' + ek : ''}`); goster(); };
+const uyu = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const preset = await (await fetch('/presets/avukatbeta.json')).json();
+const aralik = sorguAraligi(new Date());
+const gun = (n, saat) => { const d = new Date(); d.setHours(saat, 0, 0, 0); d.setDate(d.getDate() + n); return d.getTime(); };
+const durusma = (n, saat, no, ek = {}) => ({
+  dosyaId: 'D' + no, kayitId: 'K' + no, tarihSaat: gun(n, saat),
+  yerelBirimAd: 'Örnekköy 3. Asliye Ceza Mahkemesi', dosyaNo: `2026/${no}`, dosyaTurKodAciklama: 'Ceza Dava Dosyası',
+  islemTuruAciklama: 'Duruşma',
+  dosyaTaraflari: [{ isim: 'AHMET', soyad: 'YILMAZ', sifat: 'Sanık', isVekil: true }, { isim: 'MEHMET', soyad: 'KAYA', sifat: 'Müşteki', isVekil: false }],
+  ...ek
+});
+// Today, in nine days, on the last day; one past the range, one yesterday.
+const YANIT = { data: [durusma(9, 10, 437), durusma(0, 14, 88, { islemTuruAciklama: 'Keşif' }), durusma(29, 9, 12), durusma(30, 9, 13), durusma(-1, 9, 14)] };
+
+function depoYap(baslangic = {}) {
+  const d = structuredClone(baslangic);
+  return {
+    veri: d,
+    get: async (k) => { const o = {}; for (const x of [].concat(k)) if (x in d) o[x] = structuredClone(d[x]); return o; },
+    set: async (o) => { Object.assign(d, structuredClone(o)); }
+  };
+}
+
+function ortam({ depo = depoYap(), yakalanan = [], yanit = YANIT } = {}) {
+  const istekler = [];
+  const mesajlar = [];
+  const k = durusmalariKur({
+    preset,
+    depo,
+    gecikme: 100,
+    portalFetch: async (r) => { istekler.push(r); if (yanit instanceof Error) throw yanit; return structuredClone(yanit); },
+    getRequests: async () => yakalanan,
+    mesaj: async (m) => { mesajlar.push(m); return { ok: true }; }
+  });
+  return { k, depo, istekler, mesajlar };
+}
+
+const bolum = () => document.getElementById('ua-durusma');
+const metin = (s) => bolum()?.querySelector(s)?.textContent || '';
+const dugme = (act) => bolum()?.querySelector(`[data-act="${act}"]`);
+
+try {
+  // The portal's own 7-day call was seen: replay it, with 30 days.
+  const PORTAL = { url: 'https://avukat.uyap.gov.tr/avukat_durusma_sorgula_brd.ajx', method: 'POST', body: '{"baslangicTarihi":"01.01.2026","bitisTarihi":"08.01.2026"}', contentType: 'application/json; charset=UTF-8' };
+  let o = ortam({ yakalanan: [PORTAL] });
+  await uyu(800);
+  const r = o.istekler[0];
+  ok('istek: portalın kendi isteği 30 günle yinelendi', r?.url === PORTAL.url && r.headers['Content-Type'] === PORTAL.contentType && JSON.stringify(JSON.parse(r.body)) === JSON.stringify({ baslangicTarihi: aralik.baslangicTarihi, bitisTarihi: aralik.bitisTarihi }), r?.body);
+  ok('panel: bölüm panelin içinde', bolum()?.parentElement === document.querySelector('#ua-panel .ua-body'));
+  ok('panel: özet sayıyı ve ilk duruşmayı gösteriyor', /^3 duruşma · ilki \d\d\.\d\d \S+ 14:00$/.test(metin('[data-role="ozet"]')), metin('[data-role="ozet"]'));
+  const kayit = o.depo.veri.durusmaListesi;
+  ok('liste: aralık dışındakiler atıldı, sıralı kaydedildi', kayit?.kayitlar.map((d) => d.dosyaNo).join() === '2026/88,2026/437,2026/12', kayit?.kayitlar.map((d) => d.dosyaNo).join());
+  ok('panel: Google Takvim izi yok', !bolum().querySelector('[data-act="baglan"]') && !/Google/.test(bolum().textContent));
+
+  ok('panel: liste kapalı başlıyor', bolum().querySelector('[data-role="govde"]').hidden);
+  dugme('ac').click();
+  await uyu(50);
+  const satirlar = [...bolum().querySelectorAll('[data-role="liste"] li')];
+  ok('panel: açılınca üç satır, müvekkilli', satirlar.length === 3 && /2026\/437 · Örnekköy/.test(satirlar[1].textContent) && /AHMET YILMAZ/.test(satirlar[1].textContent));
+  dugme('tablo').click();
+  await uyu(50);
+  ok('panel: Tabloyu Aç tablo sayfasını istiyor', o.mesajlar.some((m) => m.kind === 'durusmaTablosu'));
+
+  // The panel redraws its body: the section comes back.
+  document.querySelector('#ua-panel .ua-body').innerHTML = '<div class="ua-bar">Evrakları Listele</div>';
+  await uyu(600);
+  ok('panel: yeniden çizilince bölüm geri geliyor', Boolean(bolum()?.isConnected));
+  o.k.durdur();
+
+  // A fresh list is not fetched again on its own.
+  const depo = o.depo;
+  o = ortam({ depo });
+  await uyu(800);
+  ok('otomatik: taze liste yeniden istenmiyor', o.istekler.length === 0 && /^3 duruşma/.test(metin('[data-role="ozet"]')));
+  dugme('yenile').click();
+  await uyu(300);
+  ok('Yenile: elle istendiğinde yeniden alınıyor', o.istekler.length === 1);
+  o.k.durdur();
+
+  // Yesterday's list is stale.
+  o = ortam({ depo: depoYap({ durusmaListesi: { ...kayit, aralik: { ...kayit.aralik, baslangicTarihi: '01.01.2020' } } }) });
+  await uyu(800);
+  ok('otomatik: eski günün listesi yenileniyor', o.istekler.length === 1);
+  ok('otomatik: arka plana takvim isteği gitmiyor', !o.mesajlar.length, JSON.stringify(o.mesajlar.map((m) => m.kind)));
+  o.k.durdur();
+
+  // Nothing seen yet: the preset's template.
+  o = ortam();
+  await uyu(800);
+  const t = o.istekler[0];
+  ok('istek: portal isteği görülmediyse şablon', t?.method === 'POST' && t.url.endsWith('/avukat_durusma_sorgula_brd.ajx') && t.headers['Content-Type'] === 'application/json' && JSON.parse(t.body).bitisTarihi === aralik.bitisTarihi, t && t.url + ' ' + t.body);
+  o.k.durdur();
+
+  o = ortam({ yanit: new Error('POST /avukat_durusma_sorgula_brd.ajx → 401') });
+  await uyu(800);
+  ok('hata: alınamayınca söylüyor', /Duruşmalar alınamadı: .*401/.test(metin('[data-role="durum"]')), metin('[data-role="durum"]'));
+  o.k.durdur();
+
+  // UYAP's security block: say so, remember it, ask nothing more on its own.
+  const ENGEL = Object.assign(new Error('POST → 429'), { status: 429, govde: 'Güvenlik sistemlerimiz, erişiminizde insan kullanımına uygun olmayan bir etkinlik örüntüsü tespit etmiştir. Bu nedenle erişiminiz geçici olarak durdurulmuştur.' });
+  o = ortam({ yanit: ENGEL });
+  await uyu(800);
+  ok('engel: duruşma sorgusu engeli söylüyor ve kaydediyor', /geçici olarak durdurdu/.test(metin('[data-role="durum"]')) && typeof o.depo.veri.uyapEngeli === 'number', metin('[data-role="durum"]'));
+  const engelDeposu = o.depo;
+  o.k.durdur();
+  o = ortam({ depo: engelDeposu });
+  await uyu(800);
+  ok('engel: süre dolmadan kendiliğinden sorgu yok', o.istekler.length === 0);
+  dugme('yenile').click();
+  await uyu(200);
+  ok('engel: Yenile de bekletiyor', o.istekler.length === 0 && /dakika sonra alınabilir/.test(metin('[data-role="durum"]')), metin('[data-role="durum"]'));
+  // The panel's "Beklemeyi Kaldır" clears the record: the next Yenile asks at once, no reload.
+  delete engelDeposu.veri.uyapEngeli;
+  delete engelDeposu.veri.uyapEngelSayisi;
+  dugme('yenile').click();
+  await uyu(300);
+  ok('engel: Beklemeyi Kaldır sonrası Yenile sayfa yenilenmeden soruyor', o.istekler.length === 1, String(o.istekler.length));
+  o.k.durdur();
+
+  // A run that fetched documents cleared the count to 0: the next block is the first again.
+  o = ortam({ depo: depoYap({ uyapEngeli: Date.now() - 2 * 3_600_000, uyapEngelSayisi: 0 }), yanit: ENGEL });
+  await uyu(800);
+  ok('engel: sayaç sıfırlandıysa duruşma engeli yine ilk sayılıyor (15 dk)', o.depo.veri.uyapEngelSayisi === 1 && /15 dakika sonra/.test(metin('[data-role="durum"]')) && o.depo.veri.uyapEngelIlerledi === false, String(o.depo.veri.uyapEngelSayisi) + ' ' + metin('[data-role="durum"]').slice(0, 70));
+  o.k.durdur();
+
+  // With the panel's option off: an old wait does not hold the query back, and a
+  // block is reported in UYAP's own words without recording a new wait.
+  o = ortam({ depo: depoYap({ engelKorumasi: false, uyapEngeli: Date.now(), uyapEngelSayisi: 1 }), yanit: ENGEL });
+  await uyu(800);
+  ok('koruma kapalı: eski bekleme kaydı sorguyu durdurmuyor', o.istekler.length === 1, String(o.istekler.length));
+  ok(
+    "koruma kapalı: engel UYAP'ın yanıtıyla yazıyor, yeni bekleme yok",
+    /UYAP'ın yanıtı: "Güvenlik sistemlerimiz/.test(metin('[data-role="durum"]')) && !/dakika sonra/.test(metin('[data-role="durum"]')) && o.depo.veri.uyapEngelSayisi === 1,
+    metin('[data-role="durum"]').slice(0, 90)
+  );
+  o.k.durdur();
+
+  o = ortam({ yanit: new Error('Extension context invalidated.') });
+  await uyu(800);
+  ok('bağlantı: eklenti yenilendiyse sayfayı yenilemeyi söylüyor', /Sayfayı yenileyin \(F5\)/.test(metin('[data-role="durum"]')) && !/context invalidated/.test(metin('[data-role="durum"]')), metin('[data-role="durum"]'));
+  o.k.durdur();
+
+  o = ortam({ yanit: { data: [] } });
+  await uyu(800);
+  ok('liste: duruşma yoksa söylüyor', metin('[data-role="ozet"]') === '30 gün içinde duruşma yok', metin('[data-role="ozet"]'));
+  o.k.durdur();
+
+  // The login page gets the quick login, not the hearings.
+  document.getElementById('uyap').innerHTML = '<div class="dx-button">E-Devlet İle Giriş</div>';
+  o = ortam();
+  await uyu(800);
+  ok('giriş sayfası: bölüm yok, sorgu yok', !bolum() && o.istekler.length === 0, 'bolum=' + Boolean(bolum()) + ' istek=' + o.istekler.length + ' ' + (bolum()?.outerHTML || '').slice(0, 80));
+  o.k.durdur();
+  document.getElementById('uyap').innerHTML = '';
+
+  /* ------------------------------------------------------- the table page */
+
+  window.chrome = { storage: { local: { get: async () => ({ durusmaListesi: kayit }) } } };
+  const html = await (await fetch('/src/popup/durusmalar.html')).text();
+  const sayfa = new DOMParser().parseFromString(html, 'text/html');
+  document.getElementById('tablo-sayfasi').innerHTML = sayfa.querySelector('header').outerHTML + sayfa.querySelector('main').outerHTML;
+  const indirilen = [];
+  HTMLAnchorElement.prototype.click = function () { indirilen.push({ ad: this.download, href: this.href }); };
+  await import('/src/popup/durusmalar.js');
+  await uyu(200);
+  const govde = document.querySelector('#tablo tbody');
+  const gunler = [...govde.querySelectorAll('tr.gun')].map((r) => r.textContent);
+  ok('tablo: üç duruşma, her gün başlıklı', govde.querySelectorAll('tr:not(.gun)').length === 3 && gunler.length === 3 && /bugün$/.test(gunler[0]), gunler.join(' | '));
+  ok('tablo: başlık aralığı yazıyor', document.getElementById('baslik').textContent === `Duruşmalar · ${aralik.baslangicTarihi} – ${aralik.bitisTarihi}`);
+  ok('tablo: taraflar sütunlarda', /AHMET YILMAZ \(Sanık\)/.test(govde.textContent) && /MEHMET KAYA \(Müşteki\)/.test(govde.textContent));
+  document.getElementById('excel').click();
+  await uyu(50);
+  const xlsx = indirilen[0] && new Uint8Array(await (await fetch(indirilen[0].href)).arrayBuffer());
+  ok('tablo: Excel dosyası üretiliyor', indirilen[0]?.ad === `Duruşmalar ${aralik.baslangicTarihi}-${aralik.bitisTarihi}.xlsx` && xlsx?.[0] === 0x50 && xlsx?.[1] === 0x4b, indirilen[0]?.ad);
+} catch (e) {
+  log.push('İSTİSNA ' + (e?.stack || e));
+}
+
+log.push('BİTTİ');
+goster();
+</script>
+</body></html>

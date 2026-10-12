@@ -1,0 +1,18 @@
+{
+  "name": "uyap-evrak-asistani",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "description": "Not a package: this file exists so Node treats the sources as ES modules, and so the checks can run. The extension itself has no build step and no runtime dependencies — eslint is a development tool only and ships in no release.",
+  "scripts": {
+    "check": "eslint . && node tools/check-dead-declarations.mjs && node tools/check-unused.mjs && node tools/check-docs.mjs && node tools/check-manifest.mjs && node tools/test-e2e.mjs && node tools/test-panel.mjs",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "linkedom": "^0.18.13"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0"
+  }
+}

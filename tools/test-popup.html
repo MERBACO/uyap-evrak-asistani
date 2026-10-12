@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+  Scenario for tools/test-panel.mjs — run that, not this page.
+
+  The popup's quick-login setup: the real popup.html markup and popup.js, with a
+  fake chrome.storage and chrome.permissions. The kimlik no is the usual
+  checksum-valid test value, the GSM number invented.
+-->
+<html lang="tr"><head><meta charset="utf-8"><title>UYAP Arşiv popup testi</title></head>
+<body>
+<div id="popup"></div>
+<pre id="sonuc">başladı</pre>
+<script>
+  const yaz = (m) => (document.getElementById('sonuc').textContent += '\n' + m);
+  window.addEventListener('error', (e) => yaz('HATA OLAYI ' + e.message));
+  window.addEventListener('unhandledrejection', (e) => yaz('REJECT ' + (e.reason?.stack || e.reason)));
+</script>
+<script type="module">
+const log = [];
+const goster = () => (document.getElementById('sonuc').textContent = log.join('\n'));
+const ok = (ad, kosul, ek = '') => { log.push(`${kosul ? 'ok  ' : 'HATA'}  ${ad}${ek ? '  → ' + ek : ''}`); goster(); };
+const uyu = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const depo = {};
+const izinler = new Set();
+const istenen = [];
+let izinVer = true;
+window.chrome = {
+  runtime: { getManifest: () => ({ version: 'test' }) },
+  storage: { local: {
+    get: async (k) => { const o = {}; for (const x of [].concat(k)) if (x in depo) o[x] = structuredClone(depo[x]); return o; },
+    set: async (o) => { Object.assign(depo, structuredClone(o)); },
+    remove: async (k) => { for (const x of [].concat(k)) delete depo[x]; }
+  } },
+  permissions: {
+    contains: async ({ origins }) => origins.every((o) => izinler.has(o)),
+    request: async ({ origins }) => { istenen.push(...origins); if (izinVer) origins.forEach((o) => izinler.add(o)); return izinVer; },
+    remove: async ({ origins }) => { origins.forEach((o) => izinler.delete(o)); return true; }
+  }
+};
+
+try {
+  const html = await (await fetch('/src/popup/popup.html')).text();
+  const kaynak = new DOMParser().parseFromString(html, 'text/html');
+  document.head.append(...kaynak.querySelectorAll('style'));
+  document.getElementById('popup').innerHTML = kaynak.querySelector('main').outerHTML + '<span id="surum"></span>';
+  await import('/src/popup/popup.js');
+  await uyu(100);
+
+  const $ = (s) => document.querySelector(s);
+  const durum = () => $('#hg-durum').textContent;
+  const doldur = (tc, gsm, op) => {
+    $('#hg-tc').value = tc;
+    $('#hg-gsm').value = gsm;
+    if (op) document.querySelector(`input[name="hg-operator"][value="${op}"]`).checked = true;
+  };
+  const kaydet = () => $('#hg-form').requestSubmit();
+
+  ok('popup: kurulmamışken Kur düğmesi', !$('#hg-kur-satiri').hidden && $('#hg-form').hidden && $('#hg-kayitli').hidden);
+  ok('popup: üç operatör seçeneği', document.querySelectorAll('input[name="hg-operator"]').length === 3);
+
+  $('#hg-kur').click();
+  ok('popup: Kur formu açıyor', !$('#hg-form').hidden);
+
+  doldur('10000000147', '0532 123 45 67', 'turkcell');
+  kaydet();
+  await uyu(100);
+  ok('popup: yanlış kimlik no kaydedilmiyor', !depo.mobilImza && /kimlik/.test(durum()) && istenen.length === 0);
+
+  doldur('10000000146', '0532 123 45 67', 'turkcell');
+  kaydet();
+  await uyu(100);
+  ok('popup: kaydedildi', JSON.stringify(depo.mobilImza) === JSON.stringify({ tc: '10000000146', gsm: '5321234567', operator: 'turkcell' }), JSON.stringify(depo.mobilImza));
+  ok('popup: yalnızca e-Devlet izni istendi', JSON.stringify(istenen) === JSON.stringify(['https://giris.turkiye.gov.tr/*']));
+  ok('popup: kayıttan sonra özet maskeli', $('#hg-form').hidden && /10\*{7}46/.test($('#hg-ozet').textContent) && /0532 \*\*\* \*\* 67 · Turkcell/.test($('#hg-ozet').textContent), $('#hg-ozet').textContent);
+  ok('popup: özette tam numara yok', !/10000000146|5321234567/.test($('#hg-kayitli').innerHTML));
+  ok('popup: başarı mesajı', /Kaydedildi/.test(durum()));
+
+  $('#hg-degistir').click();
+  ok('popup: Değiştir kayıtlı kimlik noyu alana geri koymuyor', $('#hg-tc').value === '' && !$('#hg-form').hidden);
+  $('#hg-vazgec').click();
+  await uyu(50);
+
+  $('#hg-sil').click();
+  await uyu(100);
+  ok('popup: Sil bilgileri ve izni kaldırıyor', !depo.mobilImza && izinler.size === 0 && !$('#hg-kur-satiri').hidden);
+
+  izinVer = false;
+  $('#hg-kur').click();
+  doldur('10000000146', '5321234567', 'vodafone');
+  kaydet();
+  await uyu(100);
+  ok('popup: izin reddedilince söylüyor', depo.mobilImza?.operator === 'vodafone' && /izni verilmedi/.test(durum()), durum());
+} catch (e) {
+  log.push('İSTİSNA ' + (e?.stack || e));
+}
+
+log.push('BİTTİ');
+goster();
+</script>
+</body></html>
